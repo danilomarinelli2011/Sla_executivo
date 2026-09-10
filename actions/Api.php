@@ -29,7 +29,7 @@ final class Api extends CController {
 
 	use InputCompat;
 
-	private const PERMITIDOS = '#^(consolidado|config|categorias|mapa|importacoes(/\d+)?|demo|dados|export/(csv|json)|health)$#';
+	private const PERMITIDOS = '#^(consolidado|semanal|pesos|unidades|config|categorias|mapa|importacoes(/\d+)?|demo|dados|export/(csv|json|semanal-csv)|health)$#';
 
 	protected function init(): void {
 		$this->initInputCompat();
@@ -44,12 +44,14 @@ final class Api extends CController {
 			'metodo' => ['string'],
 			'payload' => ['string'],
 			'ano' => ['string'],
+			'mes' => ['string'],
 			CCsrfTokenHelper::CSRF_TOKEN_NAME => ['string']
 		], [
 			'path' => 'required|string',
 			'metodo' => 'string',
 			'payload' => 'string',
 			'ano' => 'string',
+			'mes' => 'string',
 			CCsrfTokenHelper::CSRF_TOKEN_NAME => 'string'
 		]);
 	}
@@ -118,6 +120,24 @@ final class Api extends CController {
 			return ['json' => Repository::consolidado($ano)];
 		}
 
+		if ($caminho === 'semanal') {
+			return ['json' => Repository::semanal($ano, $this->mesInformado())];
+		}
+
+		if ($caminho === 'pesos') {
+			return ['json' => ['categorias' => Repository::salvarPesos((array) ($corpo['pesos'] ?? []), $usuario)]];
+		}
+
+		if ($caminho === 'unidades') {
+			Repository::salvarUnidades((array) ($corpo['unidades'] ?? []), $usuario);
+
+			return ['json' => ['ok' => true]];
+		}
+
+		if ($caminho === 'export/semanal-csv') {
+			return ['texto' => Repository::exportarSemanalCsv($ano, $this->mesInformado())];
+		}
+
 		if ($caminho === 'config') {
 			return $metodo === 'PUT'
 				? ['json' => ['config' => Repository::salvarConfig($corpo, $usuario)]]
@@ -171,6 +191,12 @@ final class Api extends CController {
 		}
 
 		return ['json' => null, 'erro' => _('Operação não reconhecida.')];
+	}
+
+	private function mesInformado(): ?int {
+		$mes = (string) $this->getInput('mes', '');
+
+		return ($mes !== '' && ctype_digit($mes) && (int) $mes >= 1 && (int) $mes <= 12) ? (int) $mes : null;
 	}
 
 	/**

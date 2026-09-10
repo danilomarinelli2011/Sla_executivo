@@ -3,6 +3,7 @@
 namespace Modules\SlaExecutivo;
 
 use APP;
+use CMenu;
 use CMenuItem;
 use Zabbix\Core\CModule;
 
@@ -25,13 +26,20 @@ class Module extends CModule {
 			return;
 		}
 
+		// Tools › SLA Executivo › (Mensal | Semanal): três níveis, como
+		// Administration › General › GUI no próprio Zabbix.
 		$menu
 			->findOrAdd(_(self::MENU_SECTION))
 			->getSubMenu()
 			->add(
 				(new CMenuItem(_('SLA Executivo')))
-					->setAction('sla.executivo.view')
-					->setAliases(['sla.executivo.settings.update'])
+					->setSubMenu(new CMenu([
+						(new CMenuItem(_('SLA Executivo (Mensal)')))
+							->setAction('sla.executivo.view')
+							->setAliases(['sla.executivo.settings.update']),
+						(new CMenuItem(_('SLA Executivo (Semanal)')))
+							->setAction('sla.executivo.semanal')
+					]))
 			);
 	}
 }

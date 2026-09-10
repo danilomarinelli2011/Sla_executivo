@@ -102,7 +102,8 @@ final class Repository {
 
 		return array_map(static fn(array $c) => [
 			'id' => $c['id'], 'nome' => $c['nome'], 'sigla' => $c['sigla'],
-			'cor' => $c['cor'], 'padrao' => $c['padrao'], 'ordem' => (int) $c['ordem']
+			'cor' => $c['cor'], 'padrao' => $c['padrao'], 'ordem' => (int) $c['ordem'],
+			'peso' => (float) ($c['peso_negocio'] ?? 0)
 		], $linhas);
 	}
 
@@ -594,13 +595,15 @@ final class Repository {
 
 			$inserir = $pdo->prepare('
 				INSERT INTO sla_medicao (importacao_id, grupo, equipamento, situacao, ano, mes,
+					periodo_inicio, periodo_fim, semana,
 					sla, meta_slo, indisponibilidade_s, janela_s, incidentes, peso, calculavel, observacao)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			');
 
 			foreach ($medicoes as $m) {
 				$inserir->execute([
 					$id, $m['grupo'], $m['equipamento'], $m['situacao'], $m['ano'], $m['mes'],
+					$m['periodo_inicio'] ?? null, $m['periodo_fim'] ?? null, $m['semana'] ?? null,
 					$m['sla'], $m['meta_slo'], $m['indisponibilidade_s'], $m['janela_s'],
 					$m['incidentes'], $m['peso'], $m['calculavel'] ? 't' : 'f', $m['observacao']
 				]);
@@ -665,32 +668,45 @@ final class Repository {
 	 */
 	public static function demo(?int $ano, string $usuario): array {
 		$ano = $ano ?? (int) date('Y');
-		$universo = [
-			['Operação — Usina Norte', 8, 99.72], ['Operação — Usina Sul', 6, 99.68],
-			['Escritórios — Matriz', 5, 99.90], ['Escritórios — Regionais', 7, 99.86],
-			['Agências PI', 9, 99.87], ['Agências AL', 8, 99.83], ['Agências RS', 11, 99.83],
-			['Agências AP', 6, 99.82], ['Agências GO', 10, 99.78], ['Agências PA', 7, 99.76],
-			['Agências MA', 8, 99.70]
-		];
+
+		// Sete unidades, cada uma com as três categorias. O nome do grupo termina
+		// no código da unidade, como nos grupos reais — é assim que a unidade é
+		// deduzida sem ninguém apontar à mão.
+		$unidades = ['AL' => 99.90, 'PI' => 99.88, 'AP' => 99.80, 'RS' => 99.35, 'PA' => 99.30, 'GO' => 99.05, 'MA' => 99.00];
+		$categorias = [['Operação', 4, 0.00], ['Escritórios', 3, 0.05], ['Agências', 6, -0.05]];
 
 		mt_srand(20260101);
 		$medicoes = [];
 
-		foreach ($universo as [$grupo, $quantidade, $base]) {
-			for ($mes = 1; $mes <= 7; $mes++) {
-				$janela = (int) (new \DateTime("$ano-$mes-01"))->format('t') * 86400;
+		foreach ($unidades as $uf => $baseUnidade) {
+			foreach ($categorias as [$categoria, $quantidade, $ajuste]) {
+				$grupo = "$categoria $uf";
+				$prefixo = preg_replace('/[^A-Z]/', '', mb_strtoupper(mb_substr($categoria, 0, 2))).'-'.$uf;
 
-				for ($i = 1; $i <= $quantidade; $i++) {
-					$sla = max(97.8, min(100, $base + (mt_rand(0, 10000) / 10000 - 0.45) * 0.28));
-					$down = $janela * (100 - $sla) / 100;
-					$medicoes[] = [
-						'grupo' => $grupo,
-						'equipamento' => preg_replace('/[^A-Z]/', '', $grupo).sprintf('-%03d', $i),
-						'situacao' => 'Monitorado', 'ano' => $ano, 'mes' => $mes,
-						'sla' => round($sla, 6), 'meta_slo' => 99.0, 'indisponibilidade_s' => round($down, 2),
-						'janela_s' => (float) $janela, 'incidentes' => (int) ($down / 3600 * 1.4) + 1,
-						'peso' => 1.0, 'calculavel' => true, 'observacao' => ''
-					];
+				for ($mes = 1; $mes <= 7; $mes++) {
+					foreach (self::semanasDoMes($ano, $mes) as [$semana, $inicio, $fim]) {
+						$dias = $inicio->diff($fim)->days + 1;
+						$janela = $dias * 86400;
+
+						for ($i = 1; $i <= $quantidade; $i++) {
+							$ruido = (mt_rand(0, 10000) / 10000 - 0.5) * 0.30;
+							// Um incidente maior de vez em quando, para o ranking ter variação.
+							$incidente = mt_rand(0, 100) < 6 ? -mt_rand(5, 20) / 10 : 0;
+							$sla = max(95.0, min(100.0, $baseUnidade + $ajuste + $ruido + $incidente));
+							$down = $janela * (100 - $sla) / 100;
+
+							$medicoes[] = [
+								'grupo' => $grupo,
+								'equipamento' => sprintf('%s-%03d', $prefixo, $i),
+								'situacao' => 'Monitorado', 'ano' => $ano, 'mes' => $mes,
+								'periodo_inicio' => $inicio->format('Y-m-d'), 'periodo_fim' => $fim->format('Y-m-d'),
+								'semana' => $semana,
+								'sla' => round($sla, 6), 'meta_slo' => 99.0, 'indisponibilidade_s' => round($down, 2),
+								'janela_s' => (float) $janela, 'incidentes' => (int) ($down / 3600 * 1.4) + ($down > 0 ? 1 : 0),
+								'peso' => 1.0, 'calculavel' => true, 'observacao' => ''
+							];
+						}
+					}
 				}
 			}
 		}
@@ -701,6 +717,319 @@ final class Repository {
 		Db::auditar($usuario, 'demo', ['ano' => $ano, 'linhas' => count($medicoes)]);
 
 		return ['ok' => true, 'id' => $id, 'linhas' => count($medicoes), 'ano' => $ano];
+	}
+
+	/**
+	 * Semanas-calendário de um mês (domingo a sábado), recortadas ao mês.
+	 *
+	 * @return array<int, array{0: int, 1: \DateTime, 2: \DateTime}>  [semana, início, fim]
+	 */
+	public static function semanasDoMes(int $ano, int $mes): array {
+		$primeiro = new \DateTime(sprintf('%04d-%02d-01', $ano, $mes));
+		$ultimo = (clone $primeiro)->modify('last day of this month');
+		$saida = [];
+		$cursor = clone $primeiro;
+
+		while ($cursor <= $ultimo) {
+			$semana = Parser::semanaDoMes($cursor);
+			// Fim da semana: o sábado, ou o último dia do mês, o que vier antes.
+			$sabado = (clone $cursor)->modify('+'.(6 - (int) $cursor->format('w')).' days');
+			$fim = $sabado < $ultimo ? $sabado : clone $ultimo;
+			$saida[] = [$semana, clone $cursor, $fim];
+			$cursor = (clone $fim)->modify('+1 day');
+		}
+
+		return $saida;
+	}
+
+	// ── Acompanhamento semanal por unidade ───────────────────────────────────
+
+	private const SEMANAS = ['1 SEM', '2 SEM', '3 SEM', '4 SEM', '5 SEM', '6 SEM'];
+
+	/**
+	 * Meses que têm medição com semana (isto é, importada a partir de um
+	 * relatório com período — planilha em formato largo não entra aqui).
+	 *
+	 * @return array<int, array{ano: int, mes: int}>
+	 */
+	public static function mesesComSemana(): array {
+		return array_map(static fn(array $l) => ['ano' => (int) $l['ano'], 'mes' => (int) $l['mes']],
+			Db::consultar('SELECT DISTINCT ano, mes FROM sla_medicao WHERE semana IS NOT NULL ORDER BY ano DESC, mes DESC'));
+	}
+
+	/**
+	 * Quadro semanal de um mês, por unidade — o modelo da diretoria.
+	 *
+	 * Para cada unidade: uma linha por categoria com 1..6 SEM, ACUM (o mês
+	 * inteiro, ponderado por tempo) e a contribuição ponderada
+	 * (ACUM × peso de negócio); a linha Geral (todos os equipamentos da
+	 * unidade); e a PONDERADA da unidade, que é a soma das contribuições.
+	 *
+	 * Quando a unidade não tem alguma categoria (um site sem Operação, por
+	 * exemplo), a soma é normalizada pelos pesos presentes — senão a unidade
+	 * seria punida por não ter a categoria, e não por ter ficado indisponível.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function semanal(?int $ano, ?int $mes): array {
+		$parametros = self::config();
+		$metodo = $parametros['metodo'];
+		$todas = self::categorias();
+		$porId = array_column($todas, null, 'id');
+		$meses = self::mesesComSemana();
+
+		if ($ano === null || $mes === null) {
+			$ano = $meses[0]['ano'] ?? (int) date('Y');
+			$mes = $meses[0]['mes'] ?? (int) date('n');
+		}
+
+		$valor = static fn(?array $l): ?float => self::valorAgregado($l, $metodo);
+		$filtro = 'calculavel AND sla IS NOT NULL AND semana IS NOT NULL AND ano = ? AND mes = ?';
+
+		// Uma consulta por recorte, agrupadas no banco; a montagem fica aqui.
+		$porUnidadeCatSemana = Db::consultar(
+			'SELECT unidade, categoria_id, semana, '.self::AGREGADOS."
+			 FROM sla_medicao_classificada WHERE $filtro GROUP BY unidade, categoria_id, semana",
+			[$ano, $mes]
+		);
+		$porUnidadeCat = Db::consultar(
+			'SELECT unidade, categoria_id, '.self::AGREGADOS."
+			 FROM sla_medicao_classificada WHERE $filtro GROUP BY unidade, categoria_id",
+			[$ano, $mes]
+		);
+		$porUnidadeSemana = Db::consultar(
+			'SELECT unidade, semana, '.self::AGREGADOS."
+			 FROM sla_medicao_classificada WHERE $filtro GROUP BY unidade, semana",
+			[$ano, $mes]
+		);
+		$porUnidade = Db::consultar(
+			'SELECT unidade, '.self::AGREGADOS.", count(DISTINCT equipamento) AS equipamentos
+			 FROM sla_medicao_classificada WHERE $filtro GROUP BY unidade ORDER BY unidade",
+			[$ano, $mes]
+		);
+
+		$unidades = [];
+
+		foreach ($porUnidade as $u) {
+			$unidades[$u['unidade']] = [
+				'unidade' => $u['unidade'],
+				'cats' => [],
+				'geral' => ['semanas' => array_fill(0, 6, null), 'acum' => $valor($u)],
+				'equipamentos' => (int) $u['equipamentos'],
+				'down' => (float) ($u['down'] ?? 0),
+				'incidentes' => (int) ($u['incidentes'] ?? 0),
+				'ponderada' => null,
+				'pesos_presentes' => 0.0
+			];
+		}
+
+		foreach ($porUnidadeSemana as $l) {
+			if (isset($unidades[$l['unidade']])) {
+				$unidades[$l['unidade']]['geral']['semanas'][(int) $l['semana'] - 1] = $valor($l);
+			}
+		}
+
+		// Linhas por categoria, na ordem cadastrada (OP, ES, AG…).
+		foreach ($porUnidadeCat as $l) {
+			$cat = $porId[$l['categoria_id']] ?? null;
+
+			if ($cat === null || !isset($unidades[$l['unidade']])) {
+				continue;
+			}
+
+			$acum = $valor($l);
+			$unidades[$l['unidade']]['cats'][$cat['id']] = [
+				'id' => $cat['id'], 'nome' => $cat['nome'], 'sigla' => $cat['sigla'], 'cor' => $cat['cor'],
+				'ordem' => $cat['ordem'], 'peso' => $cat['peso'],
+				'semanas' => array_fill(0, 6, null),
+				'acum' => $acum,
+				'contribuicao' => ($acum !== null) ? $acum * $cat['peso'] / 100 : null
+			];
+		}
+
+		foreach ($porUnidadeCatSemana as $l) {
+			if (isset($unidades[$l['unidade']]['cats'][$l['categoria_id']])) {
+				$unidades[$l['unidade']]['cats'][$l['categoria_id']]['semanas'][(int) $l['semana'] - 1] = $valor($l);
+			}
+		}
+
+		// PONDERADA por unidade e ranking.
+		foreach ($unidades as &$u) {
+			uasort($u['cats'], static fn($a, $b) => $a['ordem'] <=> $b['ordem']);
+			$soma = 0.0;
+			$pesos = 0.0;
+
+			foreach ($u['cats'] as $c) {
+				if ($c['acum'] !== null && $c['peso'] > 0) {
+					$soma += $c['acum'] * $c['peso'];
+					$pesos += $c['peso'];
+				}
+			}
+
+			$u['pesos_presentes'] = $pesos;
+			$u['ponderada'] = $pesos > 0 ? $soma / $pesos : null;
+			$u['cats'] = array_values($u['cats']);
+		}
+		unset($u);
+
+		$ranking = array_values(array_filter(array_map(static fn($u) => [
+			'unidade' => $u['unidade'], 'ponderada' => $u['ponderada'], 'acum' => $u['geral']['acum'],
+			'equipamentos' => $u['equipamentos'], 'down' => $u['down']
+		], $unidades), static fn($r) => $r['ponderada'] !== null));
+		usort($ranking, static fn($a, $b) => $b['ponderada'] <=> $a['ponderada']);
+
+		// Ordem dos quadros: a mesma do ranking; unidades sem ponderada no fim.
+		$posicao = array_flip(array_column($ranking, 'unidade'));
+		uasort($unidades, static fn($a, $b) => ($posicao[$a['unidade']] ?? PHP_INT_MAX) <=> ($posicao[$b['unidade']] ?? PHP_INT_MAX));
+
+		// Semanas que existem no mês (calendário) e que têm dado.
+		$calendario = array_map(static fn($w) => [
+			'semana' => $w[0], 'inicio' => $w[1]->format('Y-m-d'), 'fim' => $w[2]->format('Y-m-d')
+		], self::semanasDoMes($ano, $mes));
+		$comDado = array_fill(0, 6, false);
+
+		foreach ($porUnidadeSemana as $l) {
+			$comDado[(int) $l['semana'] - 1] = true;
+		}
+
+		// Consolidado da rede: todas as unidades juntas, no mesmo formato.
+		$redeSemanas = array_fill(0, 6, null);
+
+		foreach (Db::consultar(
+			'SELECT semana, '.self::AGREGADOS." FROM sla_medicao_classificada WHERE $filtro GROUP BY semana",
+			[$ano, $mes]
+		) as $l) {
+			$redeSemanas[(int) $l['semana'] - 1] = $valor($l);
+		}
+
+		$redeTotal = Db::consultar(
+			'SELECT '.self::AGREGADOS.", count(DISTINCT equipamento) AS equipamentos, count(DISTINCT unidade) AS unidades
+			 FROM sla_medicao_classificada WHERE $filtro",
+			[$ano, $mes]
+		)[0];
+
+		$ponderadas = array_column($ranking, 'ponderada');
+
+		return [
+			'ano' => $ano, 'mes' => $mes, 'meses' => self::MESES, 'semanas' => self::SEMANAS,
+			'config' => $parametros, 'categorias' => $todas,
+			'meses_disponiveis' => $meses,
+			'calendario' => $calendario, 'semanas_com_dado' => $comDado,
+			'unidades' => array_values($unidades),
+			'ranking' => $ranking,
+			'rede' => [
+				'semanas' => $redeSemanas, 'acum' => $valor($redeTotal),
+				'ponderada_media' => $ponderadas !== [] ? array_sum($ponderadas) / count($ponderadas) : null,
+				'equipamentos' => (int) $redeTotal['equipamentos'], 'unidades' => (int) $redeTotal['unidades'],
+				'down' => (float) ($redeTotal['down'] ?? 0), 'incidentes' => (int) ($redeTotal['incidentes'] ?? 0)
+			],
+			'grupos' => array_map(static fn(array $l) => [
+				'grupo' => $l['grupo'], 'cat' => $l['categoria_id'], 'unidade' => $l['unidade'],
+				'manual' => $l['manual'] !== null, 'registros' => (int) $l['registros']
+			], Db::consultar(
+				'SELECT m.grupo, m.categoria_id, m.unidade, gc.unidade AS manual, count(*) AS registros
+				 FROM sla_medicao_classificada m LEFT JOIN sla_grupo_categoria gc ON gc.grupo = m.grupo
+				 GROUP BY m.grupo, m.categoria_id, m.unidade, gc.unidade ORDER BY m.unidade, m.grupo'
+			))
+		];
+	}
+
+	/**
+	 * Pesos de negócio por categoria. Zero é permitido (categoria fora da
+	 * ponderada); a soma não precisa dar 100, porque a ponderada é normalizada.
+	 *
+	 * @param array<string, mixed> $pesos  id da categoria => peso
+	 */
+	public static function salvarPesos(array $pesos, string $usuario): array {
+		$validos = array_column(self::categorias(), 'id');
+		$comando = Db::conexao()->prepare('UPDATE sla_categoria SET peso_negocio = ? WHERE id = ?');
+		$gravados = [];
+
+		foreach ($pesos as $id => $peso) {
+			if (!in_array($id, $validos, true)) {
+				continue;
+			}
+
+			$numero = is_string($peso) ? str_replace(',', '.', trim($peso)) : $peso;
+
+			if (!is_numeric($numero) || (float) $numero < 0 || (float) $numero > 100) {
+				throw new InvalidArgumentException(sprintf(_('Peso inválido para %1$s: informe um número entre 0 e 100.'), $id));
+			}
+
+			$comando->execute([round((float) $numero, 2), $id]);
+			$gravados[$id] = round((float) $numero, 2);
+		}
+
+		Db::auditar($usuario, 'pesos.update', $gravados);
+
+		return self::categorias();
+	}
+
+	/**
+	 * Unidade apontada à mão por grupo de hosts. Vazio volta para a dedução
+	 * automática (o código no fim do nome).
+	 *
+	 * @param array<string, string> $unidades  grupo => unidade
+	 */
+	public static function salvarUnidades(array $unidades, string $usuario): void {
+		$pdo = Db::conexao();
+		$comando = $pdo->prepare('
+			INSERT INTO sla_grupo_categoria (grupo, categoria_id, unidade, definido_por)
+			VALUES (?, (SELECT categoria_id FROM sla_medicao_classificada WHERE grupo = ? LIMIT 1), ?, ?)
+			ON CONFLICT (grupo) DO UPDATE SET unidade = EXCLUDED.unidade,
+				definido_em = now(), definido_por = EXCLUDED.definido_por
+		');
+
+		foreach ($unidades as $grupo => $unidade) {
+			$grupo = mb_substr(trim((string) $grupo), 0, 255);
+			$unidade = mb_substr(trim((string) $unidade), 0, 60);
+
+			if ($grupo === '') {
+				continue;
+			}
+
+			$comando->execute([$grupo, $grupo, $unidade !== '' ? $unidade : null, $usuario]);
+		}
+
+		Db::auditar($usuario, 'unidades.update', ['grupos' => count($unidades)]);
+	}
+
+	public static function exportarSemanalCsv(?int $ano, ?int $mes): string {
+		$dados = self::semanal($ano, $mes);
+		$decimais = $dados['config']['decimais'];
+
+		$n = static fn($v) => $v === null ? '' : str_replace('.', ',', number_format((float) $v, $decimais, '.', ''));
+
+		$linhas = [];
+		$linha = static function (array $campos) use (&$linhas): void {
+			$linhas[] = implode(';', array_map(static fn($c) => '"'.str_replace('"', '""', (string) $c).'"', $campos));
+		};
+
+		$linha(['Indicador', $dados['config']['titulo'], 'Mês', self::MESES[$dados['mes'] - 1].'/'.$dados['ano']]);
+		$linha(['Meta (%)', $n($dados['config']['meta']), 'Desafio (%)', $n($dados['config']['desafio'])]);
+		$linha(['Pesos', implode(' · ', array_map(static fn($c) => $c['sigla'].' '.$n($c['peso']).'%', array_filter($dados['categorias'], static fn($c) => $c['peso'] > 0)))]);
+		$linha([]);
+		$linha(['Ranking', 'Unidade', 'Ponderada (%)', 'Geral (%)', 'Equipamentos', 'Tempo parado (s)']);
+
+		foreach ($dados['ranking'] as $i => $r) {
+			$linha([$i + 1, $r['unidade'], $n($r['ponderada']), $n($r['acum']), $r['equipamentos'], (int) $r['down']]);
+		}
+
+		foreach ($dados['unidades'] as $u) {
+			$linha([]);
+			$linha([$u['unidade']]);
+			$linha(array_merge(['Categoria', 'Sigla'], self::SEMANAS, ['ACUM', 'Peso (%)', 'Ponderada']));
+
+			foreach ($u['cats'] as $c) {
+				$linha(array_merge([$c['nome'], $c['sigla']], array_map($n, $c['semanas']), [$n($c['acum']), $n($c['peso']), $n($c['contribuicao'])]));
+			}
+
+			$linha(array_merge(['Geral', '—'], array_map($n, $u['geral']['semanas']), [$n($u['geral']['acum']), '', $n($u['ponderada'])]));
+			$linha(array_merge(['Meta', 'SLO'], array_fill(0, 6, $n($dados['config']['meta'])), [$n($dados['config']['meta']), '', '']));
+			$linha(array_merge(['Desafio', '—'], array_fill(0, 6, $n($dados['config']['desafio'])), [$n($dados['config']['desafio']), '', '']));
+		}
+
+		return "\xEF\xBB\xBF".implode("\r\n", $linhas)."\r\n";
 	}
 
 	// ── Exportações ──────────────────────────────────────────────────────────

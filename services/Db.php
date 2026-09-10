@@ -118,6 +118,13 @@ final class Db {
 	 * Cria as tabelas na primeira conexão do processo, se ainda não existirem.
 	 * `IF NOT EXISTS` em tudo: rodar de novo não faz mal.
 	 */
+	/**
+	 * Aplica, uma vez cada, os arquivos de sql/ que ainda não rodaram.
+	 *
+	 * O registro fica em sla_migracao. Instalações da 4.0.x, que criaram o
+	 * schema antes de existir esse registro, são reconhecidas pela presença de
+	 * sla_config: o 001 é marcado como aplicado sem rodar de novo.
+	 */
 	private static function garantirSchema(PDO $pdo): void {
 		if (self::$schema_conferido) {
 			return;
@@ -125,32 +132,57 @@ final class Db {
 
 		self::$schema_conferido = true;
 
-		$existe = $pdo->query("SELECT to_regclass('public.sla_config') AS t")->fetch();
+		$pdo->exec('CREATE TABLE IF NOT EXISTS sla_migracao (
+			arquivo text PRIMARY KEY,
+			aplicada_em timestamptz NOT NULL DEFAULT now()
+		)');
 
-		if ($existe && $existe['t'] !== null) {
-			return;
+		$existe_config = $pdo->query("SELECT to_regclass('public.sla_config') AS t")->fetch();
+
+		if ($existe_config && $existe_config['t'] !== null) {
+			$pdo->exec("INSERT INTO sla_migracao (arquivo) VALUES ('001_schema.sql') ON CONFLICT DO NOTHING");
 		}
 
-		$arquivo = __DIR__.'/../sql/001_schema.sql';
+		$aplicadas = array_column($pdo->query('SELECT arquivo FROM sla_migracao')->fetchAll(), 'arquivo');
+		$arquivos = glob(__DIR__.'/../sql/*.sql') ?: [];
+		sort($arquivos);
 
-		if (!is_file($arquivo)) {
-			throw new RuntimeException(_('Arquivo de schema do SLA Executivo não encontrado.'));
+		if ($arquivos === []) {
+			throw new RuntimeException(_('Arquivos de schema do SLA Executivo não encontrados.'));
 		}
 
-		// Uma transação: ou cria tudo, ou nada fica pela metade se algo falhar
-		// no meio (por exemplo, falta de permissão para criar tabela).
-		$pdo->beginTransaction();
+		// Trava de aplicação: dois workers do PHP-FPM subindo a página ao mesmo
+		// tempo não podem aplicar a mesma migração em paralelo.
+		$pdo->exec('SELECT pg_advisory_lock(725101)');
 
 		try {
-			$pdo->exec((string) file_get_contents($arquivo));
-			$pdo->commit();
-		}
-		catch (PDOException $e) {
-			$pdo->rollBack();
+			foreach ($arquivos as $arquivo) {
+				$nome = basename($arquivo);
 
-			throw new RuntimeException(
-				_('Não foi possível criar as tabelas do SLA Executivo: ').$e->getMessage()
-			);
+				if (in_array($nome, $aplicadas, true)) {
+					continue;
+				}
+
+				// Uma transação por arquivo: ou ele entra inteiro, ou nada fica
+				// pela metade (por exemplo, por falta de permissão).
+				$pdo->beginTransaction();
+
+				try {
+					$pdo->exec((string) file_get_contents($arquivo));
+					$pdo->prepare('INSERT INTO sla_migracao (arquivo) VALUES (?)')->execute([$nome]);
+					$pdo->commit();
+				}
+				catch (PDOException $e) {
+					$pdo->rollBack();
+
+					throw new RuntimeException(
+						sprintf(_('Não foi possível aplicar %1$s ao banco do SLA Executivo: %2$s'), $nome, $e->getMessage())
+					);
+				}
+			}
+		}
+		finally {
+			$pdo->exec('SELECT pg_advisory_unlock(725101)');
 		}
 	}
 

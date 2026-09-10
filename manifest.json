@@ -3,10 +3,10 @@
 	"id": "sla_executivo",
 	"name": "SLA Executivo",
 	"namespace": "SlaExecutivo",
-	"version": "4.0.3",
+	"version": "4.1.2",
 	"author": "DigiSystem — DigiMon Monitoring & Observability",
 	"url": "https://www.digisystem.cloud",
-	"description": "Painel executivo de SLA. Sem containers extras: usa o Postgres que o próprio Zabbix já acessa. Importa os CSVs do Relatório de Disponibilidade, consolida mês a mês por categoria e exporta em CSV, JSON e PDF.",
+	"description": "Painel executivo de SLA sobre o Postgres do próprio Zabbix: visão mensal por categoria e acompanhamento semanal por unidade com ranking ponderado, exportação em CSV, JSON e PDF.",
 	"actions": {
 		"sla.executivo.view": {
 			"class": "ReportView",
@@ -20,6 +20,11 @@
 		"sla.executivo.settings.update": {
 			"class": "SettingsUpdate",
 			"layout": "layout.htmlpage"
+		},
+		"sla.executivo.semanal": {
+			"class": "SemanalView",
+			"view": "module.sla.executivo.semanal.view",
+			"layout": "layout.htmlpage"
 		}
 	},
 	"assets": {
@@ -28,7 +33,8 @@
 		],
 		"js": [
 			"chart.umd.js",
-			"sla-executivo.js"
+			"sla-executivo.js",
+			"sla-semanal.js"
 		]
 	},
 	"config": {}

@@ -634,15 +634,71 @@ function redimensionarGraficos(){
   graficos().forEach(c => { try{ c.resize(); c.update("none"); } catch(e){} });
 }
 
-/* Dá um instante para o redesenho dos gráficos assentar antes de abrir a
-   caixa de impressão — sem isso o Chrome fotografa o estado anterior. */
+/* ── Impressão em janela própria ─────────────────────────────────────────
+   O frontend do Zabbix prende a página num contêiner rolável de 100vh, com
+   sidebar fixa e main de 1200px. Imprimir a página inteira depende de vencer
+   esse layout por CSS, e isso se mostrou frágil (cortava; depois esvaziou).
+   Em vez disso, o relatório é copiado para uma janela limpa — só a faixa de
+   identidade e o conteúdo, com a mesma folha de estilo — e os gráficos entram
+   como imagem, congelados do estado que está na tela. */
+function folhaDoModulo(){
+  const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(l => /sla-executivo\.css/.test(l.href));
+  return link ? link.href : "";
+}
+
 function imprimir(){
-  redimensionarGraficos();
-  setTimeout(() => window.print(), 150);
+  const app = document.getElementById("sx-app");
+  const relatorio = $("report");
+  if(!app || !relatorio || relatorio.style.display === "none"){ toast("Não há relatório na tela para imprimir."); return; }
+
+  const copia = relatorio.cloneNode(true);
+  const originais = relatorio.querySelectorAll("canvas");
+  copia.querySelectorAll("canvas").forEach((c, i) => {
+    const img = document.createElement("img");
+    try{ img.src = originais[i].toDataURL("image/png", 1.0); }catch(e){ img.alt = "gráfico"; }
+    img.style.cssText = "width:100%;height:100%;object-fit:contain;display:block";
+    c.parentNode.replaceChild(img, c);
+  });
+
+  /* A janela nasce em about:blank: caminhos relativos (o logo, por exemplo)
+     não resolveriam. Os src viram absolutos antes de copiar. */
+  const cabecalho = app.querySelector(".sx-print-head") ? app.querySelector(".sx-print-head").cloneNode(true) : null;
+  if(cabecalho) cabecalho.querySelectorAll("img").forEach(i => i.setAttribute("src", i.src));
+  const titulo = (cabecalho ? cabecalho.textContent : "SLA Executivo").replace(/\s+/g, " ").trim();
+  const css = folhaDoModulo();
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
+    ${css ? `<link rel="stylesheet" href="${esc(css)}">` : ""}
+    <style>
+      @page{size:A4 landscape;margin:10mm}
+      html,body{margin:0;padding:0;background:#fff;height:auto;overflow:visible}
+      body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#16202E;padding:12px 14px}
+      .sx-noprint{display:none!important}
+      .sx-app .sx-card{overflow:visible!important;break-inside:avoid;page-break-inside:avoid}
+      .sx-app .sx-tablewrap{max-height:none!important;overflow:visible!important}
+      .sx-app .sx-matrix,.sx-app .sx-heat,.sx-app .sx-matrix-semanal{min-width:0!important}
+      .sx-app .sx-chartbox{height:250px}
+      .sx-app .sx-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+      .sx-print-head{border-radius:0;box-shadow:none}
+      @media print{ .sx-print-head{background:none!important;color:#132A54} .sx-print-head div,.sx-print-head span{color:#132A54!important}
+        .sx-print-head img{filter:none!important} }
+    </style></head><body><div class="sx-app">${cabecalho ? cabecalho.outerHTML : ""}${copia.outerHTML}</div></body></html>`;
+
+  const janela = window.open("", "_blank");
+  if(!janela){ toast("O navegador bloqueou a janela de impressão. Libere pop-ups para este endereço."); return; }
+  janela.document.open(); janela.document.write(html); janela.document.close();
+
+  const disparar = () => { try{ janela.focus(); janela.print(); }catch(e){} };
+  let disparado = false;
+  const umaVez = () => { if(!disparado){ disparado = true; setTimeout(disparar, 250); } };
+  janela.addEventListener("load", umaVez);
+  setTimeout(umaVez, 1500);                       /* rede lenta para a folha de estilo */
+  janela.addEventListener("afterprint", () => setTimeout(() => janela.close(), 300));
 }
 
 function init(){
-  if(document.getElementById("sx-app") === null) return;
+  const app = document.getElementById("sx-app");
+  if(app === null || app.classList.contains("sx-semanal")) return;
   state.ctx = lerContexto();
 
   if(!state.ctx.db_ok){
@@ -669,12 +725,7 @@ function init(){
   if($("btn-json"))  $("btn-json").onclick  = () => baixar("json");
   if($("btn-print")) $("btn-print").onclick = imprimir;
 
-  /* O Chart.js redesenha o canvas quando o contêiner muda de tamanho — e na
-     impressão o contêiner muda (A4 paisagem, coluna única). Se o redesenho
-     acontece no meio da renderização do PDF, o gráfico sai em branco ou
-     cortado. Redimensionar de forma explícita antes e depois resolve. */
-  window.addEventListener("beforeprint", redimensionarGraficos);
-  window.addEventListener("afterprint", redimensionarGraficos);
+
   if($("btn-save"))  $("btn-save").onclick  = salvarParametros;
   if($("btn-addcat")) $("btn-addcat").onclick = adicionarCategoria;
   if($("p-ano")) $("p-ano").onchange = () => carregar($("p-ano").value);

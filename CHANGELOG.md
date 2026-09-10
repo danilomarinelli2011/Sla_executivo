@@ -1,5 +1,109 @@
 # Histórico de versões
 
+## 4.1.2 — PDF em janela própria (antes saía em branco)
+
+A 4.0.3 tentou vencer o layout do Zabbix por CSS na impressão. Funcionou para
+o corte, mas na página semanal o resultado foi pior: dez páginas em retrato,
+todas vazias — nem o `@page` em paisagem foi respeitado. Brigar com
+`100vh`, sidebar fixa e `main` de 1200px a cada versão do frontend é uma
+aposta ruim.
+
+Mudança de abordagem: **"Salvar em PDF" abre uma janela própria** só com a
+faixa de identidade e o relatório, carregando a mesma folha de estilo do
+módulo, e os gráficos entram como imagem (`canvas.toDataURL`), congelados
+do estado que está na tela. Sem sidebar, sem `wrapper`, sem `100vh` — o
+navegador imprime um documento comum, em A4 paisagem, com quebra de página
+entre os cards.
+
+- `imprimir()` reescrita nas duas páginas (`sla-executivo.js` e
+  `sla-semanal.js`). Os `src` do cabeçalho viram absolutos antes da cópia,
+  porque a janela nasce em `about:blank`.
+- Pop-up bloqueado é avisado na tela, com a instrução de liberar o endereço.
+- Os `beforeprint`/`afterprint` da 4.0.3 saíram: não há mais redesenho de
+  gráfico na impressão.
+- As regras `@media print` da folha ficaram: são inofensivas na janela nova
+  e ainda ajudam se alguém usar Ctrl+P na página do Zabbix.
+
+## 4.1.1 — menu em três níveis
+
+Tools › **SLA Executivo** › SLA Executivo (Mensal) | SLA Executivo (Semanal).
+Só `Module.php` mudou: o item "SLA Executivo" passou a ter um submenu com as
+duas páginas (`CMenuItem::setSubMenu(new CMenu([...]))`), o mesmo mecanismo
+que o Zabbix usa em Administration › General.
+
+## 4.1.0 — acompanhamento semanal por unidade (quadro da diretoria)
+
+Nova página, **Tools › SLA Executivo — Semanal**, que reproduz a planilha de
+acompanhamento da diretoria: um quadro por unidade com `1 SEM … 6 SEM`,
+`ACUM` e `PONDERADA`, gráfico combinado por unidade e o ranking das unidades
+pela disponibilidade ponderada.
+
+### O que foi lido da planilha e virou regra
+
+- **Semana-calendário dentro do mês**, de domingo a sábado. A semana 1 é a que
+  contém o dia 1; a troca acontece todo domingo. Setembro/2026 começa numa
+  terça: 1–5 é a semana 1, 6–12 a semana 2. Um mês tem de 4 a 6 semanas, e a
+  página mostra só as que existem no calendário daquele mês.
+- **PONDERADA é peso de negócio, não tempo.** Conferido nos números da
+  planilha: Amapá = 99,67×0,40 + 100×0,35 + 100×0,25 = 39,87 + 35,00 + 25,00
+  = 99,87; Goiás = 39,87 + 34,53 + 24,56 = 98,96. Pesos padrão OP 40 · ES 35 ·
+  AG 25, editáveis por Admin. A coluna PONDERADA de cada categoria é a
+  contribuição (ACUM × peso); a da linha Geral é a soma.
+- Quando uma unidade não tem alguma categoria, a soma é **normalizada pelos
+  pesos presentes** — a unidade não pode ser punida por não ter Operação,
+  só por ter ficado indisponível. A leitura executiva avisa quando isso
+  acontece, para a comparação ser feita com cuidado.
+- **A linha Geral** é a média de todos os equipamentos da unidade (ponderada
+  por tempo, como na visão mensal); é diferente da PONDERADA, e a planilha
+  também as distingue (99,82 vs 99,87 no Amapá).
+- **Ranking** ordena as unidades pela PONDERADA; os quadros seguem a mesma
+  ordem, com a posição no título.
+
+### De onde vem cada dado novo
+
+Nada de coluna nova no CSV. Tudo é deduzido do que o Relatório de
+Disponibilidade já exporta:
+
+- **Semana** — do "Período inicial". Para o acompanhamento semanal, gere o
+  relatório uma vez por semana (período de domingo a sábado, ou o recorte que
+  a operação usar) e importe; o mesmo CSV alimenta a visão mensal.
+- **Unidade** — o código de duas letras maiúsculas no fim do nome do grupo
+  ("Agências SP" → SP; "Escritórios — Matriz" não casa, cai em "Geral"). O
+  que for apontado à mão no cartão "Unidade de cada grupo de hosts" vence.
+- **Peso de negócio** — `sla_categoria.peso_negocio`, editável na própria
+  página.
+
+### Banco
+
+- Migração `sql/002_semanal.sql`: `periodo_inicio`, `periodo_fim` e `semana`
+  em `sla_medicao`; `peso_negocio` em `sla_categoria`; `unidade` em
+  `sla_grupo_categoria`; função `sla_unidade_de()`; view
+  `sla_medicao_classificada` recriada com a coluna `unidade`.
+- `Db::garantirSchema()` virou um runner de migrações com registro em
+  `sla_migracao`. Instalações da 4.0.x são reconhecidas pela presença de
+  `sla_config` e recebem só o `002`, sem tocar no que já existe.
+
+### Exportação e PDF
+
+- "Baixar quadro semanal (CSV)": ranking e um bloco por unidade, mesmo
+  padrão (ponto e vírgula, vírgula decimal, BOM).
+- Na impressão, cada quadro de unidade fica inteiro numa página
+  (`break-inside: avoid`), e os gráficos são redimensionados antes.
+
+### Testes
+
+- `tests/repository.php` ganhou 20 verificações do semanal, com dois CSVs de
+  semanas reais de setembro/2026: dedução da semana, unidade pelo nome do
+  grupo, ordem das categorias, semanas vazias sem zerar, PONDERADA conferida
+  contra Σ(ACUM × peso), pesos alterados, recusa de peso inválido, unidade
+  manual vencendo e voltando, CSV semanal.
+- O JSON real do `Repository::semanal()` foi alimentado no `sla-semanal.js`
+  num DOM simulado: sete quadros, cinco semanas em julho, ranking, pesos,
+  leitura executiva — sem ajuste nenhum entre as duas pontas.
+- Dados de exemplo refeitos: sete unidades × três categorias, semana a
+  semana, de janeiro a julho, com incidentes esporádicos para o ranking ter
+  variação real.
+
 ## 4.0.3 — PDF cortado: só a primeira tela saía impressa
 
 "Salvar em PDF" gerava um arquivo com a primeira tela e nada mais — KPIs e

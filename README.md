@@ -1,6 +1,6 @@
 # SLA Executivo — módulo do frontend Zabbix
 
-Painel executivo de SLA em **Tools › SLA Executivo**. Consolida os CSVs do
+Painel executivo de SLA em **Tools › SLA Executivo › SLA Executivo (Mensal)**. Consolida os CSVs do
 **Relatório de Disponibilidade** mês a mês: meta, desafio, categorias
 (Operação, Escritórios, Agências ou as que você criar), ranking, mapa de calor,
 concentração da indisponibilidade, consumo do orçamento de erro e exportação em
@@ -42,7 +42,8 @@ SlaExecutivo/
 ├── manifest.json                        actions e assets
 ├── Module.php                           entrada em Tools › SLA Executivo
 ├── actions/
-│   ├── ReportView.php                   sla.executivo.view — monta a página
+│   ├── ReportView.php                   sla.executivo.view — visão mensal
+│   ├── SemanalView.php                  sla.executivo.semanal — semanal por unidade
 │   ├── Api.php                          sla.executivo.api — único endpoint
 │   └── SettingsUpdate.php               sla.executivo.settings.update (Admin)
 ├── services/
@@ -57,9 +58,11 @@ SlaExecutivo/
 │   ├── css/sla-executivo.css            tudo sob .sx-app
 │   └── js/
 │       ├── chart.umd.js                 Chart.js 4.4.0 (offline)
-│       └── sla-executivo.js             renderização, gráficos, ações
+│       ├── sla-executivo.js             visão mensal
+│       └── sla-semanal.js               acompanhamento semanal
 ├── sql/
-│   └── 001_schema.sql                   tabelas sla_* (aplicado sozinho)
+│   ├── 001_schema.sql                   tabelas sla_* (aplicadas sozinhas, em ordem)
+│   └── 002_semanal.sql                  semana, unidade e peso de negócio
 ├── tests/
 │   ├── config.php                       php tests/config.php
 │   ├── repository.php                   php tests/repository.php (precisa de Postgres)
@@ -102,6 +105,36 @@ admin.
 "Carregar dados de exemplo" preenche o banco com um conjunto de teste, sem
 precisar de nenhum CSV — útil para validar a instalação. Depois é só remover
 essa importação pela lista.
+
+## Acompanhamento semanal por unidade
+
+**Tools › SLA Executivo › SLA Executivo (Semanal)** reproduz o quadro da diretoria: um bloco
+por unidade com `1 SEM … 6 SEM`, `ACUM` e `PONDERADA`, gráfico combinado por
+unidade (barras = Geral, linhas = OP/ES/AG, tracejados = meta/desafio) e o
+ranking das unidades pela ponderada.
+
+Como alimentar: gere o Relatório de Disponibilidade **uma vez por semana**
+(o período inicial define a semana; semanas correm de domingo a sábado) e
+importe pela página mensal. O mesmo CSV serve às duas visões.
+
+Como a unidade é descoberta: pelo código de duas letras maiúsculas no fim do
+nome do grupo de hosts ("Agências SP" → SP). Grupos que não seguem esse
+padrão caem em "Geral" até um Admin apontar a unidade no cartão da própria
+página.
+
+Como a PONDERADA é calculada — peso de negócio, não tempo:
+
+```
+PONDERADA(unidade) = Σ ACUM(categoria) × peso(categoria) ÷ Σ peso
+```
+
+Pesos padrão OP 40 · ES 35 · AG 25 (editáveis). A coluna PONDERADA de cada
+categoria mostra a contribuição (ACUM × peso); a da linha Geral, a soma.
+Unidade sem alguma categoria tem a soma normalizada pelos pesos presentes, e a
+leitura executiva avisa.
+
+Estrutura: `actions/SemanalView.php`, `views/module.sla.executivo.semanal.view.php`,
+`assets/js/sla-semanal.js`, migração `sql/002_semanal.sql`.
 
 ## Como o número é calculado
 

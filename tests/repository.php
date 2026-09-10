@@ -209,6 +209,68 @@ sxCheck(Parser::numero('1.234,56') === 1234.56, 'número com separador de milhar
 sxCheck(Parser::numero('N/D') === null, 'N/D não vira zero');
 sxCheck(Parser::data('01/02/2026')->format('n') === '2', 'data em dd/mm/aaaa');
 
+echo "\n── Acompanhamento semanal ─────────────────────────────────\n";
+sxLimpar();
+$semana = static function (string $ini, string $fim, array $linhas) use ($cabecalho): string {
+	$saida = [$cabecalho];
+	foreach ($linhas as [$grupo, $equip, $sla, $down]) {
+		$saida[] = "\"$grupo\";\"$ini\";\"$fim\";\"24x7\";\"Sem expurgo\";\"$equip\";\"Monitorado\";\"$sla\";\"99,00\";\"\";\"$down\";\"1\";\"\"";
+	}
+	return implode("\r\n", $saida);
+};
+// Setembro/2026 começa numa terça: 1–5 é a semana 1, 6–12 a semana 2.
+$sem1 = $semana('01/09/2026', '05/09/2026', [
+	['Operação SP', 'OP-SP-1', '100,00', '0'], ['Escritórios SP', 'ES-SP-1', '99,50', '2160'], ['Agências SP', 'AG-SP-1', '99,00', '4320'],
+	['Operação RJ', 'OP-RJ-1', '98,00', '8640'], ['Escritórios RJ', 'ES-RJ-1', '99,80', '864'], ['Agências RJ', 'AG-RJ-1', '99,60', '1728'],
+]);
+$sem2 = $semana('06/09/2026', '12/09/2026', [
+	['Operação SP', 'OP-SP-1', '99,90', '605'], ['Escritórios SP', 'ES-SP-1', '99,70', '1814'], ['Agências SP', 'AG-SP-1', '99,40', '3629'],
+	['Operação RJ', 'OP-RJ-1', '99,00', '6048'], ['Escritórios RJ', 'ES-RJ-1', '99,90', '605'], ['Agências RJ', 'AG-RJ-1', '99,70', '1814'],
+]);
+$r = Repository::importar([['nome' => 'sem1.csv', 'conteudo' => $sem1], ['nome' => 'sem2.csv', 'conteudo' => $sem2]], 'teste');
+sxCheck($r['importados'] === 2, 'dois CSVs semanais importados');
+$semanas = array_column(Db::consultar('SELECT DISTINCT semana FROM sla_medicao ORDER BY 1'), 'semana');
+sxCheck(array_map('intval', $semanas) === [1, 2], 'as semanas 1 e 2 foram deduzidas do período inicial');
+
+$S = Repository::semanal(2026, 9);
+sxCheck($S['ano'] === 2026 && $S['mes'] === 9, 'mês de referência correto');
+sxCheck(count($S['calendario']) === 5, 'setembro/2026 tem cinco semanas-calendário');
+sxCheck(array_column($S['unidades'], 'unidade') === ['SP', 'RJ'] || array_column($S['unidades'], 'unidade') === ['RJ', 'SP'], 'a unidade é deduzida do fim do nome do grupo (SP, RJ)');
+
+$sp = null; foreach ($S['unidades'] as $u) { if ($u['unidade'] === 'SP') { $sp = $u; } }
+sxCheck($sp !== null && count($sp['cats']) === 3, 'SP tem as três categorias');
+sxCheck(array_column($sp['cats'], 'id') === ['OP', 'ES', 'AG'], 'categorias na ordem cadastrada (OP, ES, AG)');
+$op = $sp['cats'][0];
+sxCheck($op['semanas'][2] === null && $op['semanas'][0] !== null && $op['semanas'][1] !== null, 'semanas sem CSV ficam vazias, não zeradas');
+// OP-SP: sem1 100% (down 0) usa a mediana das janelas; sem2 99,90 com 605 s.
+sxCheck($op['semanas'][1] !== null && abs($op['semanas'][1] - 99.90) < 0.01, 'OP-SP na semana 2 reproduz o SLA do CSV');
+$esperado = 0; $pesos = 0;
+foreach ($sp['cats'] as $c) { $esperado += $c['acum'] * $c['peso']; $pesos += $c['peso']; }
+sxCheck($pesos == 100.0, 'pesos padrão somam 100 (40 + 35 + 25)');
+sxCheck(abs($sp['ponderada'] - $esperado / $pesos) < 0.0001, 'PONDERADA = Σ(ACUM × peso) ÷ Σ pesos');
+sxCheck(abs($op['contribuicao'] - $op['acum'] * 0.40) < 0.0001, 'contribuição da linha = ACUM × 40%');
+sxCheck($S['ranking'][0]['unidade'] === 'SP' && $S['ranking'][1]['unidade'] === 'RJ', 'ranking: SP à frente de RJ');
+sxCheck($S['unidades'][0]['unidade'] === 'SP', 'os quadros seguem a ordem do ranking');
+
+Repository::salvarPesos(['OP' => '50', 'ES' => '30', 'AG' => '20'], 'teste');
+$S2 = Repository::semanal(2026, 9);
+$sp2 = null; foreach ($S2['unidades'] as $u) { if ($u['unidade'] === 'SP') { $sp2 = $u; } }
+$esp2 = 0; foreach ($sp2['cats'] as $c) { $esp2 += $c['acum'] * $c['peso'] / 100; }
+sxCheck(abs($sp2['ponderada'] - $esp2) < 0.0001 && $sp2['cats'][0]['peso'] == 50.0, 'pesos alterados mudam a ponderada');
+sxRecusa(fn() => Repository::salvarPesos(['OP' => '150'], 'teste'), 'peso acima de 100 é recusado');
+Repository::salvarPesos(['OP' => '40', 'ES' => '35', 'AG' => '25'], 'teste');
+
+Repository::salvarUnidades(['Agências RJ' => 'SUDESTE'], 'teste');
+$S3 = Repository::semanal(2026, 9);
+sxCheck(in_array('SUDESTE', array_column($S3['unidades'], 'unidade'), true), 'unidade apontada à mão vence a dedução');
+Repository::salvarUnidades(['Agências RJ' => ''], 'teste');
+$S4 = Repository::semanal(2026, 9);
+sxCheck(!in_array('SUDESTE', array_column($S4['unidades'], 'unidade'), true), 'apagar a unidade manual volta para a dedução');
+
+$csvSem = Repository::exportarSemanalCsv(2026, 9);
+sxCheck(strpos($csvSem, "\xEF\xBB\xBF") === 0 && strpos($csvSem, '"Ranking"') !== false && strpos($csvSem, '"PONDERADA"') === false && strpos($csvSem, '"Ponderada"') !== false, 'CSV semanal com BOM, ranking e quadro por unidade');
+sxCheck(Repository::mesesComSemana() === [['ano' => 2026, 'mes' => 9]], 'mesesComSemana lista só setembro/2026');
+
 echo "\n── Auditoria ──────────────────────────────────────────────\n";
 $acoes = array_column(Db::consultar('SELECT DISTINCT acao FROM sla_auditoria'), 'acao');
 sxCheck(in_array('importacao', $acoes, true) && in_array('config.update', $acoes, true) && in_array('mapa.update', $acoes, true),

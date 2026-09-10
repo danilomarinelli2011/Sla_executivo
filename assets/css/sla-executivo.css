@@ -861,3 +861,32 @@
 		min-width: 0;
 	}
 }
+
+/* ── Acompanhamento semanal ───────────────────────────────────────────── */
+.sx-matrix-semanal {
+	min-width: 720px;
+}
+
+.sx-matrix-semanal td.sx-acum b {
+	font-weight: 700;
+}
+
+.sx-unidade {
+	margin-bottom: 16px;
+}
+
+.sx-toolbar .sx-field select {
+	height: 36px;
+	min-width: 140px;
+}
+
+@media print {
+	.sx-unidade {
+		break-inside: avoid;
+		page-break-inside: avoid;
+	}
+
+	.sx-matrix-semanal {
+		min-width: 0;
+	}
+}

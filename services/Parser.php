@@ -138,6 +138,21 @@ final class Parser {
 	}
 
 	/**
+	 * Semana-calendário dentro do mês, de 1 a 6, com semanas de domingo a sábado.
+	 *
+	 * A semana 1 é a que contém o dia 1, ainda que comece no mês anterior; a
+	 * troca de semana acontece todo domingo. Setembro/2026 começa numa
+	 * terça: dias 1–5 são a semana 1, 6–12 a semana 2, e assim por diante.
+	 * É a mesma convenção da planilha da diretoria (1 SEM … 6 SEM).
+	 */
+	public static function semanaDoMes(DateTime $data): int {
+		$dia = (int) $data->format('j');
+		$domingoZero = (int) (clone $data)->setDate((int) $data->format('Y'), (int) $data->format('n'), 1)->format('w');
+
+		return intdiv($dia + $domingoZero - 1, 7) + 1;
+	}
+
+	/**
 	 * Devolve 1..12 quando o cabeçalho é um mês.
 	 */
 	public static function mesDeCabecalho(string $cabecalho): ?int {
@@ -306,6 +321,9 @@ final class Parser {
 					'situacao' => $situacao,
 					'ano' => $ano,
 					'mes' => $mes,
+					'periodo_inicio' => $inicio !== null ? $inicio->format('Y-m-d') : null,
+					'periodo_fim' => $fim !== null ? $fim->format('Y-m-d') : null,
+					'semana' => $inicio !== null ? self::semanaDoMes($inicio) : null,
 					'sla' => $sla,
 					'meta_slo' => self::numero($campo($linha, 'meta')),
 					'indisponibilidade_s' => $down,
@@ -423,7 +441,8 @@ final class Parser {
 
 				$medicoes[] = [
 					'grupo' => $nome, 'equipamento' => $nome, 'situacao' => '',
-					'ano' => $ano, 'mes' => $mes, 'sla' => $valor <= 1 ? $valor * 100 : $valor,
+					'ano' => $ano, 'mes' => $mes, 'periodo_inicio' => null, 'periodo_fim' => null, 'semana' => null,
+					'sla' => $valor <= 1 ? $valor * 100 : $valor,
 					'meta_slo' => null, 'indisponibilidade_s' => null, 'janela_s' => null,
 					'incidentes' => 0, 'peso' => $peso, 'calculavel' => true, 'observacao' => ''
 				];
