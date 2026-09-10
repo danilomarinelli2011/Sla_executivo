@@ -1,0 +1,863 @@
+/**
+ * SLA Executivo — folha de estilo do módulo.
+ *
+ * Toda regra vive sob .sx-app. Nenhum seletor de elemento solto (body, table, *),
+ * porque a folha é carregada dentro do frontend do Zabbix e um reset global
+ * quebraria a interface inteira.
+ */
+
+.sx-app {
+	--sx-navy: #132A54;
+	--sx-navy-2: #1E4380;
+	--sx-orange: #E4652A;
+	--sx-ink: #16202E;
+	--sx-paper: #FFFFFF;
+	--sx-line: #D6DCE5;
+	--sx-line-soft: #E8ECF2;
+	--sx-muted: #5B6879;
+	--sx-ok: #0F7B47;
+	--sx-ok-bg: #DDF3E5;
+	--sx-warn: #9A6400;
+	--sx-warn-bg: #FCEFCF;
+	--sx-bad: #B02020;
+	--sx-bad-bg: #FBE1E1;
+
+	color: var(--sx-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.sx-app * {
+	box-sizing: border-box;
+}
+
+/* ── Cartões ───────────────────────────────────────────────────────────── */
+.sx-card {
+	background: var(--sx-paper);
+	border: 1px solid var(--sx-line);
+	border-radius: 8px;
+	margin-bottom: 16px;
+	box-shadow: 0 1px 3px rgba(19, 42, 84, .05);
+	overflow: hidden;
+}
+
+.sx-card-title {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: .2px;
+	color: var(--sx-navy);
+	padding: 13px 18px;
+	background: #F7F9FB;
+	border-bottom: 1px solid var(--sx-line-soft);
+	display: flex;
+	align-items: baseline;
+	gap: 9px;
+	margin: 0;
+}
+
+.sx-card-title span {
+	font-weight: 400;
+	color: var(--sx-muted);
+	font-size: 12px;
+}
+
+.sx-card-body {
+	padding: 18px;
+}
+
+.sx-grid2 {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
+.sx-grid3 {
+	display: grid;
+	grid-template-columns: 2fr 1fr;
+	gap: 16px;
+}
+
+@media (max-width: 1100px) {
+	.sx-grid2,
+	.sx-grid3 {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* ── Botões ────────────────────────────────────────────────────────────── */
+.sx-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid var(--sx-line);
+	background: #fff;
+	color: var(--sx-navy);
+	padding: 8px 16px;
+	border-radius: 6px;
+	font-size: 12.5px;
+	font-weight: 600;
+	line-height: 1.4;
+	cursor: pointer;
+	transition: background .15s, border-color .15s, box-shadow .15s, transform .05s;
+}
+
+.sx-btn:hover {
+	background: #F2F4F7;
+	border-color: var(--sx-navy-2);
+}
+
+.sx-btn:active {
+	transform: translateY(1px);
+}
+
+.sx-primary-button {
+	background: var(--sx-navy);
+	border-color: var(--sx-navy);
+	color: #fff;
+	box-shadow: 0 1px 2px rgba(19, 42, 84, .25);
+}
+
+.sx-primary-button:hover {
+	background: var(--sx-navy-2);
+	border-color: var(--sx-navy-2);
+}
+
+.sx-secondary-button {
+	background: #fff;
+	border-color: var(--sx-navy);
+	color: var(--sx-navy);
+}
+
+.sx-btn:disabled {
+	opacity: .5;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.sx-toolbar {
+	display: flex;
+	gap: 9px;
+	flex-wrap: wrap;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.sx-toolbar-gap {
+	flex: 1;
+}
+
+/* ── Área de carga ─────────────────────────────────────────────────────── */
+.sx-drop {
+	border: 2px dashed var(--sx-line);
+	border-radius: 8px;
+	background: var(--sx-paper);
+	padding: 26px;
+	text-align: center;
+	margin-bottom: 16px;
+	transition: border-color .15s, background .15s;
+
+}
+
+.sx-drop.sx-hot {
+	border-color: var(--sx-orange);
+	background: #FFF6F1;
+}
+
+.sx-drop-title {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.sx-drop p {
+	color: var(--sx-muted);
+	font-size: 12.5px;
+	margin: 5px 0 0;
+}
+
+.sx-btnrow {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.sx-files {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+	margin-top: 12px;
+	justify-content: center;
+}
+
+.sx-chip {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	background: #F2F4F7;
+	border: 1px solid var(--sx-line);
+	border-radius: 999px;
+	padding: 5px 12px;
+	font-size: 12px;
+}
+
+.sx-chip-x {
+	border: none;
+	background: none;
+	color: var(--sx-muted);
+	font-size: 15px;
+	line-height: 1;
+	padding: 0 2px;
+	cursor: pointer;
+}
+
+.sx-chip-x:hover {
+	color: var(--sx-bad);
+}
+
+/* ── Parâmetros ────────────────────────────────────────────────────────── */
+.sx-params {
+	display: flex;
+	gap: 16px;
+	flex-wrap: wrap;
+	align-items: flex-end;
+}
+
+.sx-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.sx-field label {
+	font-size: 11px;
+	color: var(--sx-muted);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .3px;
+}
+
+.sx-field input,
+.sx-field select {
+	border: 1px solid var(--sx-line);
+	border-radius: 6px;
+	padding: 8px 10px;
+	background: #fff;
+	min-width: 108px;
+	height: 36px;
+	font-size: 13px;
+	color: var(--sx-ink);
+	transition: border-color .15s, box-shadow .15s;
+}
+
+.sx-field input:focus,
+.sx-field select:focus {
+	outline: none;
+	border-color: var(--sx-navy-2);
+	box-shadow: 0 0 0 3px rgba(30, 67, 128, .12);
+}
+
+.sx-field input:disabled,
+.sx-field select:disabled {
+	background: #F7F9FB;
+	color: var(--sx-muted);
+}
+
+/* ── KPIs ──────────────────────────────────────────────────────────────── */
+.sx-kpis {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+	gap: 14px;
+	margin-bottom: 16px;
+}
+
+.sx-kpi {
+	background: var(--sx-paper);
+	border: 1px solid var(--sx-line);
+	border-left: 4px solid var(--sx-navy);
+	border-radius: 8px;
+	padding: 14px 16px;
+	box-shadow: 0 1px 3px rgba(19, 42, 84, .05);
+}
+
+.sx-kpi-lab {
+	font-size: 11px;
+	color: var(--sx-muted);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .3px;
+}
+
+.sx-kpi-val {
+	font-size: 30px;
+	font-weight: 700;
+	line-height: 1.15;
+	margin-top: 3px;
+	color: var(--sx-navy);
+}
+
+.sx-kpi-sub {
+	font-size: 11px;
+	color: var(--sx-muted);
+	margin-top: 2px;
+}
+
+.sx-kpi.sx-ok {
+	border-left-color: var(--sx-ok);
+}
+
+.sx-kpi.sx-ok .sx-kpi-val {
+	color: var(--sx-ok);
+}
+
+.sx-kpi.sx-warn {
+	border-left-color: var(--sx-warn);
+}
+
+.sx-kpi.sx-warn .sx-kpi-val {
+	color: var(--sx-warn);
+}
+
+.sx-kpi.sx-bad {
+	border-left-color: var(--sx-bad);
+}
+
+.sx-kpi.sx-bad .sx-kpi-val {
+	color: var(--sx-bad);
+}
+
+/* ── Quadro executivo ──────────────────────────────────────────────────── */
+.sx-tablewrap {
+	overflow-x: auto;
+}
+
+.sx-matrix {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 12px;
+	min-width: 880px;
+}
+
+.sx-matrix th,
+.sx-matrix td {
+	border: 1px solid var(--sx-line);
+	padding: 5px 7px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+.sx-matrix thead th {
+	background: var(--sx-navy);
+	color: #fff;
+	font-weight: 600;
+}
+
+.sx-matrix thead th.sx-title {
+	font-size: 13.5px;
+	letter-spacing: 1px;
+}
+
+.sx-matrix td.sx-rowlabel {
+	text-align: left;
+	font-weight: 600;
+	color: #fff;
+}
+
+.sx-matrix td.sx-sigla {
+	font-weight: 700;
+	color: #fff;
+}
+
+.sx-matrix tr.sx-geral td {
+	background: #5C6B7F;
+	color: #fff;
+	font-weight: 600;
+}
+
+.sx-matrix tr.sx-ref td {
+	background: #fff;
+	color: var(--sx-muted);
+	font-weight: 500;
+}
+
+.sx-matrix td.sx-v-ok {
+	background: var(--sx-ok-bg);
+	color: var(--sx-ok);
+	font-weight: 600;
+}
+
+.sx-matrix td.sx-v-warn {
+	background: var(--sx-warn-bg);
+	color: var(--sx-warn);
+	font-weight: 600;
+}
+
+.sx-matrix td.sx-v-bad {
+	background: var(--sx-bad-bg);
+	color: var(--sx-bad);
+	font-weight: 600;
+}
+
+.sx-matrix td.sx-v-none {
+	color: #B7BFCA;
+}
+
+.sx-matrix td.sx-acum {
+	border-left: 2px solid var(--sx-navy);
+}
+
+.sx-matrix-row {
+	display: flex;
+	gap: 14px;
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.sx-matrix-col {
+	flex: 1;
+	min-width: 620px;
+}
+
+.sx-annual {
+	border: 1px solid var(--sx-line);
+	border-radius: 8px;
+	overflow: hidden;
+	min-width: 196px;
+	box-shadow: 0 1px 3px rgba(19, 42, 84, .05);
+}
+
+.sx-annual-h {
+	background: var(--sx-navy);
+	color: #fff;
+	padding: 8px 11px;
+	font-size: 11.5px;
+	font-weight: 600;
+	text-align: center;
+	line-height: 1.3;
+}
+
+.sx-annual-v {
+	padding: 14px 11px;
+	text-align: center;
+	font-size: 31px;
+	font-weight: 700;
+}
+
+.sx-annual-f {
+	padding: 0 11px 12px;
+	text-align: center;
+	font-size: 11.5px;
+	color: var(--sx-muted);
+}
+
+/* ── Gráficos ──────────────────────────────────────────────────────────── */
+.sx-chartbox {
+	position: relative;
+	height: 280px;
+}
+
+.sx-chartbox-tall {
+	height: 320px;
+}
+
+/* ── Tabelas simples e mapa de calor ───────────────────────────────────── */
+.sx-plain {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 12.5px;
+}
+
+.sx-plain th {
+	text-align: left;
+	font-size: 11px;
+	color: var(--sx-muted);
+	font-weight: 600;
+	padding: 5px 7px;
+	border-bottom: 1px solid var(--sx-line);
+}
+
+.sx-plain td {
+	padding: 5px 7px;
+	border-bottom: 1px solid var(--sx-line-soft);
+}
+
+.sx-plain td.sx-n {
+	text-align: right;
+}
+
+.sx-pill {
+	display: inline-block;
+	padding: 1px 7px;
+	border-radius: 9px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.sx-pill.sx-ok {
+	background: var(--sx-ok-bg);
+	color: var(--sx-ok);
+}
+
+.sx-pill.sx-warn {
+	background: var(--sx-warn-bg);
+	color: var(--sx-warn);
+}
+
+.sx-pill.sx-bad {
+	background: var(--sx-bad-bg);
+	color: var(--sx-bad);
+}
+
+.sx-heat {
+	border-collapse: collapse;
+	font-size: 11.5px;
+	width: 100%;
+	min-width: 800px;
+}
+
+.sx-heat th {
+	padding: 4px 6px;
+	font-size: 11px;
+	color: var(--sx-muted);
+	font-weight: 600;
+	border-bottom: 1px solid var(--sx-line);
+}
+
+.sx-heat th.sx-left {
+	text-align: left;
+}
+
+.sx-heat td {
+	padding: 4px 6px;
+	text-align: center;
+	border: 1px solid #fff;
+	color: #25313F;
+}
+
+.sx-heat td.sx-left {
+	text-align: left;
+	background: #fff !important;
+	font-weight: 500;
+	white-space: nowrap;
+	max-width: 230px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ── Classificação de grupos ───────────────────────────────────────────── */
+.sx-maprow {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--sx-line-soft);
+}
+
+.sx-maprow:last-child {
+	border-bottom: none;
+}
+
+.sx-maprow .sx-nm {
+	flex: 1;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sx-maprow .sx-ct {
+	font-size: 11px;
+	color: var(--sx-muted);
+	min-width: 110px;
+	text-align: right;
+}
+
+.sx-maprow select {
+	border: 1px solid var(--sx-line);
+	border-radius: 3px;
+	padding: 4px 6px;
+	min-width: 168px;
+	font-size: 12.5px;
+}
+
+.sx-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+/* ── Leitura dos números ───────────────────────────────────────────────── */
+.sx-finding {
+	display: flex;
+	gap: 10px;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--sx-line-soft);
+}
+
+.sx-finding:last-child {
+	border-bottom: none;
+}
+
+.sx-tag {
+	font-size: 10px;
+	font-weight: 700;
+	padding: 2px 7px;
+	border-radius: 3px;
+	height: fit-content;
+	margin-top: 2px;
+	white-space: nowrap;
+}
+
+.sx-tag.sx-crit {
+	background: var(--sx-bad-bg);
+	color: var(--sx-bad);
+}
+
+.sx-tag.sx-aten {
+	background: var(--sx-warn-bg);
+	color: var(--sx-warn);
+}
+
+.sx-tag.sx-info {
+	background: #E2EAF6;
+	color: var(--sx-navy-2);
+}
+
+.sx-tag.sx-bom {
+	background: var(--sx-ok-bg);
+	color: var(--sx-ok);
+}
+
+.sx-finding h4 {
+	font-size: 13px;
+	font-weight: 600;
+	margin: 0 0 2px;
+}
+
+.sx-finding p {
+	font-size: 12.5px;
+	color: var(--sx-muted);
+	line-height: 1.5;
+	margin: 0;
+}
+
+/* ── Avisos e apoio ────────────────────────────────────────────────────── */
+.sx-alert {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	border-radius: 3px;
+	padding: 10px 13px;
+	margin-bottom: 12px;
+	font-size: 12.5px;
+}
+
+.sx-alert-warning {
+	background: var(--sx-warn-bg);
+	border: 1px solid #E5C77A;
+	color: #6B4700;
+}
+
+.sx-alert strong {
+	font-weight: 700;
+}
+
+.sx-empty {
+	padding: 32px 14px;
+	text-align: center;
+	color: var(--sx-muted);
+	font-size: 13px;
+}
+
+.sx-note {
+	font-size: 12px;
+	color: var(--sx-muted);
+	margin-top: 9px;
+	line-height: 1.55;
+}
+
+.sx-toast {
+	position: fixed;
+	left: 50%;
+	bottom: 20px;
+	transform: translateX(-50%);
+	background: var(--sx-ink);
+	color: #fff;
+	padding: 9px 17px;
+	border-radius: 4px;
+	font-size: 13px;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity .2s;
+	z-index: 1200;
+}
+
+.sx-toast.sx-on {
+	opacity: 1;
+}
+
+/* Faixa de identidade: sempre visível, não só no papel. É o mesmo padrão
+   visual dos outros módulos DigiSystem — barra navy, logo, risco laranja. */
+.sx-print-head {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	background: linear-gradient(135deg, var(--sx-navy) 0%, var(--sx-navy-2) 100%);
+	border-radius: 8px;
+	border-bottom: 3px solid var(--sx-orange);
+	padding: 14px 20px;
+	margin-bottom: 16px;
+	box-shadow: 0 2px 10px rgba(19, 42, 84, .18);
+}
+
+.sx-print-head img {
+	max-height: 34px;
+	filter: brightness(0) invert(1);
+}
+
+.sx-print-head div {
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: .2px;
+	color: #fff;
+}
+
+.sx-print-head span {
+	display: block;
+	font-size: 11.5px;
+	font-weight: 400;
+	color: rgba(255, 255, 255, .72);
+	margin-top: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sx-app * {
+		transition: none !important;
+		animation: none !important;
+	}
+}
+
+/* ── Impressão / PDF ───────────────────────────────────────────────────── */
+@media print {
+	@page {
+		size: A4 landscape;
+		margin: 10mm;
+	}
+
+	/* O Zabbix 7 prende a página num contêiner rolável do tamanho da tela
+	   (html/body com height:100vh e .wrapper com overflow:auto). O navegador
+	   só imprime o que está dentro desse viewport — daí o PDF sair só com a
+	   primeira tela. Aqui a altura e o overflow são liberados para o papel. */
+	html,
+	body {
+		height: auto !important;
+		min-height: 0 !important;
+		overflow: visible !important;
+	}
+
+	.wrapper {
+		display: block !important;
+		flex: none !important;
+		height: auto !important;
+		min-height: 0 !important;
+		min-width: 0 !important;
+		overflow: visible !important;
+		margin-left: 0 !important;
+	}
+
+	main {
+		min-width: 0 !important;
+		width: auto !important;
+		overflow: visible !important;
+	}
+
+	.sidebar,
+	.header-title,
+	.footer,
+	.msg-good,
+	.msg-bad,
+	.sx-noprint {
+		display: none !important;
+	}
+
+	.wrapper,
+	main,
+	.container {
+		padding: 0 !important;
+		margin: 0 !important;
+	}
+
+	.sx-app {
+		font-size: 10.5px;
+	}
+
+	/* Nada pode ficar preso dentro de um contêiner com rolagem: o quadro
+	   executivo (largo) e o detalhamento (com max-height inline de 420px)
+	   precisam se expandir por completo no papel. */
+	.sx-app .sx-card {
+		overflow: visible !important;
+	}
+
+	.sx-app .sx-tablewrap {
+		max-height: none !important;
+		overflow: visible !important;
+	}
+
+	.sx-app .sx-chartbox canvas {
+		max-width: 100% !important;
+	}
+
+	.sx-app .sx-kpis {
+		grid-template-columns: repeat(5, 1fr);
+	}
+
+	.sx-print-head {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		background: none;
+		box-shadow: none;
+		border-radius: 0;
+		border-bottom: 2px solid var(--sx-orange);
+		padding: 0 0 8px;
+		margin-bottom: 12px;
+	}
+
+	.sx-print-head img {
+		max-height: 42px;
+		filter: none;
+	}
+
+	.sx-print-head div {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--sx-navy);
+	}
+
+	.sx-print-head span {
+		display: block;
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--sx-muted);
+	}
+
+	.sx-card {
+		break-inside: avoid;
+		page-break-inside: avoid;
+		border-color: #B9C3D0;
+	}
+
+	.sx-chartbox {
+		height: 230px;
+	}
+
+	.sx-matrix,
+	.sx-heat {
+		min-width: 0;
+	}
+
+	.sx-matrix-col {
+		min-width: 0;
+	}
+}

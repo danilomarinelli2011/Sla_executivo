@@ -1,0 +1,74 @@
+# Validação do SLA Executivo.
+#
+# Copie para .gitea/workflows/ na raiz do repositório (ex.: /etc/digisystem/zabbix).
+# Ajuste o caminho em "paths" se o módulo não estiver em modules/SlaExecutivo.
+
+name: Validar SLA Executivo
+
+on:
+  push:
+    paths:
+      - 'modules/SlaExecutivo/**'
+  pull_request:
+    paths:
+      - 'modules/SlaExecutivo/**'
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+
+    # Um Postgres de serviço só para o teste: o schema do módulo (sql/001_schema.sql)
+    # é aplicado sozinho na primeira conexão, então não precisa de passo extra aqui.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sla_ci
+          POSTGRES_USER: sla_ci
+          POSTGRES_PASSWORD: sla_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sla_ci -d sla_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mbstring php-pgsql nodejs
+
+      - name: Lint do PHP
+        run: |
+          find modules/SlaExecutivo -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Manifest é JSON válido
+        run: |
+          python3 -c "import json;json.load(open('modules/SlaExecutivo/manifest.json'))"
+
+      - name: Sintaxe do JavaScript
+        run: |
+          node --check modules/SlaExecutivo/assets/js/sla-executivo.js
+
+      - name: Testes de conexão opcional
+        run: |
+          cd modules/SlaExecutivo && php tests/config.php
+
+      - name: Testes de renderização
+        run: |
+          cd modules/SlaExecutivo && node tests/render.js
+
+      - name: Testes do Repository (contra o Postgres de serviço)
+        env:
+          DB_SERVER_HOST: localhost
+          DB_SERVER_PORT: '5432'
+          POSTGRES_DB: sla_ci
+          POSTGRES_USER: sla_ci
+          POSTGRES_PASSWORD: sla_ci
+        run: |
+          cd modules/SlaExecutivo && php tests/repository.php
