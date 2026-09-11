@@ -1,41 +1,41 @@
 {
-	"manifest_version": 2.0,
-	"id": "sla_executivo",
-	"name": "SLA Executivo",
-	"namespace": "SlaExecutivo",
-	"version": "4.1.2",
-	"author": "DigiSystem — DigiMon Monitoring & Observability",
-	"url": "https://www.digisystem.cloud",
-	"description": "Painel executivo de SLA sobre o Postgres do próprio Zabbix: visão mensal por categoria e acompanhamento semanal por unidade com ranking ponderado, exportação em CSV, JSON e PDF.",
-	"actions": {
-		"sla.executivo.view": {
-			"class": "ReportView",
-			"view": "module.sla.executivo.view",
-			"layout": "layout.htmlpage"
-		},
-		"sla.executivo.api": {
-			"class": "Api",
-			"layout": "layout.json"
-		},
-		"sla.executivo.settings.update": {
-			"class": "SettingsUpdate",
-			"layout": "layout.htmlpage"
-		},
-		"sla.executivo.semanal": {
-			"class": "SemanalView",
-			"view": "module.sla.executivo.semanal.view",
-			"layout": "layout.htmlpage"
-		}
-	},
-	"assets": {
-		"css": [
-			"sla-executivo.css"
-		],
-		"js": [
-			"chart.umd.js",
-			"sla-executivo.js",
-			"sla-semanal.js"
-		]
-	},
-	"config": {}
+  "manifest_version": 2.0,
+  "id": "sla_executivo",
+  "name": "SLA Executivo",
+  "namespace": "SlaExecutivo",
+  "version": "4.3.0",
+  "author": "DigiSystem — DigiMon Monitoring & Observability",
+  "url": "https://www.digisystem.cloud",
+  "description": "Painel executivo de SLA sobre o Postgres do próprio Zabbix: visão mensal por categoria e acompanhamento semanal por unidade com ranking ponderado, exportação em CSV, JSON e PDF.",
+  "actions": {
+    "sla.executivo.view": {
+      "class": "ReportView",
+      "view": "module.sla.executivo.view",
+      "layout": "layout.htmlpage"
+    },
+    "sla.executivo.api": {
+      "class": "Api",
+      "layout": "layout.json"
+    },
+    "sla.executivo.settings.update": {
+      "class": "SettingsUpdate",
+      "layout": "layout.htmlpage"
+    },
+    "sla.executivo.semanal": {
+      "class": "SemanalView",
+      "view": "module.sla.executivo.semanal.view",
+      "layout": "layout.htmlpage"
+    }
+  },
+  "assets": {
+    "css": [
+      "sla-executivo.css"
+    ],
+    "js": [
+      "chart.umd.js",
+      "sla-executivo.js",
+      "sla-semanal.js"
+    ]
+  },
+  "config": {}
 }

@@ -573,6 +573,19 @@ final class Repository {
 	}
 
 	/**
+	 * Grava uma coleta feita direto do Zabbix. O hash é determinístico (grupo +
+	 * período + regras): coletar a mesma janela de novo substitui a anterior em
+	 * vez de duplicar — é como se "atualiza" uma semana.
+	 *
+	 * @param array<int, array<string, mixed>> $medicoes
+	 */
+	public static function gravarColeta(string $nome, string $hash, array $medicoes, string $usuario): int {
+		Db::executar('DELETE FROM sla_importacao WHERE hash = ?', [$hash]);
+
+		return self::gravarImportacao($nome, $hash, 0, $medicoes, $usuario);
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $medicoes
 	 */
 	private static function gravarImportacao(string $nome, string $hash, int $bytes, array $medicoes, string $usuario): int {

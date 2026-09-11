@@ -237,19 +237,75 @@ function graficoUnidade(D,u,i,n){
 function renderPesos(D){
   const caixa=$("pesos-form"); if(!caixa) return;
   caixa.innerHTML = D.categorias.filter(c=>c.id!=="NC").map(c=>`
-    <div class="sx-field"><label for="sx-peso-${c.id}"><span class="sx-swatch" style="background:${c.cor};margin-right:5px"></span>${esc(c.nome)} (${esc(c.sigla)})</label>
-      <input id="sx-peso-${c.id}" data-peso="${c.id}" type="number" step="0.01" min="0" max="100" value="${num(c.peso,2).replace(",",".")}" ${state.ctx.can_write?"":"disabled"} style="min-width:90px"></div>`).join("")
+    <div class="sx-field sx-peso-row"><label for="sx-peso-${c.id}"><span class="sx-swatch" style="background:${c.cor};margin-right:5px"></span>${esc(c.nome)} (${esc(c.sigla)})</label>
+      <div class="sx-peso-row-controls">
+        <input id="sx-peso-${c.id}" data-peso="${c.id}" type="number" step="0.01" min="0" max="100" value="${num(c.peso,2).replace(",",".")}" ${state.ctx.can_write?"":"disabled"} style="min-width:90px">
+        ${state.ctx.can_write?`<button type="button" class="sx-btn sx-cat-remove" data-cat-remove="${c.id}" title="Remover categoria" aria-label="Remover ${esc(c.nome)}">&times;</button>`:""}
+      </div></div>`).join("")
     + `<div class="sx-field"><label>Soma</label><input id="sx-peso-soma" disabled style="min-width:80px" value="${num(D.categorias.reduce((a,c)=>a+(c.id!=="NC"?c.peso:0),0),2)}"></div>`;
   caixa.querySelectorAll("[data-peso]").forEach(i=>i.oninput=()=>{
     let soma=0; caixa.querySelectorAll("[data-peso]").forEach(x=>soma+=parseFloat(x.value)||0);
     $("peso-soma").value=num(soma,2);
   });
+  caixa.querySelectorAll("[data-cat-remove]").forEach(b=>b.onclick=()=>removerCategoria(b.dataset.catRemove));
 }
 
 async function salvarPesos(){
   const pesos={}; document.querySelectorAll("[data-peso]").forEach(i=>pesos[i.dataset.peso]=i.value);
   const r=await chamar("pesos",{metodo:"PUT", payload:{pesos}});
   if(r.ok){ toast("Pesos salvos."); carregar(state.D.ano, state.D.mes); }
+}
+
+const CORES_NOVA_CATEGORIA=["#7A3E9D","#0F7B47","#B0651B","#2E6E8E","#8C1C4B"];
+
+/**
+ * Cadastra uma categoria nova sem sair da página semanal. O peso começa em
+ * zero — a mesma regra do backend para toda categoria recém-criada — e o
+ * quadro de pesos, recarregado logo em seguida, já mostra a linha nova com a
+ * soma recalculada automaticamente (a mesma lógica de renderPesos()).
+ */
+async function adicionarCategoria(){
+  const campoNome=$("newcat"), campoSigla=$("newsig");
+  if(!campoNome) return;
+  const nome=campoNome.value.trim();
+  if(!nome) return toast("Informe o nome da categoria.");
+
+  const atuais=(state.D&&state.D.categorias||[]).slice();
+  if(atuais.filter(c=>c.id!=="NC").length>=11) return toast("Limite de 12 categorias atingido.");
+
+  const sigla=((campoSigla&&campoSigla.value.trim())||nome.slice(0,2)).toUpperCase();
+  const naoClassificado=atuais.filter(c=>c.id==="NC");
+  const demais=atuais.filter(c=>c.id!=="NC");
+  demais.push({id:"C"+Date.now().toString(36).slice(-4), nome:nome, sigla:sigla,
+               cor:CORES_NOVA_CATEGORIA[demais.length%CORES_NOVA_CATEGORIA.length], padrao:""});
+
+  const r=await chamar("categorias",{metodo:"PUT", payload:{categorias: demais.concat(naoClassificado)}});
+  if(r.ok){
+    campoNome.value=""; if(campoSigla) campoSigla.value="";
+    toast("Categoria criada.");
+    carregar(state.D&&state.D.ano, state.D&&state.D.mes);
+  }
+}
+
+/**
+ * Remove uma categoria. O backend faz DELETE FROM sla_categoria WHERE id NOT
+ * IN (...) ao salvar a lista sem ela — o que arrasta junto (ON DELETE
+ * CASCADE) qualquer classificação manual de grupo que apontava para essa
+ * categoria. O aviso existe para essa consequência nunca ser surpresa.
+ */
+async function removerCategoria(id){
+  const atuais=(state.D&&state.D.categorias||[]);
+  const alvo=atuais.find(c=>c.id===id);
+  if(!alvo||id==="NC") return;
+
+  if(!confirm(`Remover "${alvo.nome}"? Grupos classificados manualmente nela voltam a cair pela expressão da categoria, ou em "Não classificado".`)) return;
+
+  const restantes=atuais.filter(c=>c.id!==id);
+  const r=await chamar("categorias",{metodo:"PUT", payload:{categorias: restantes}});
+  if(r.ok){
+    toast("Categoria removida.");
+    carregar(state.D&&state.D.ano, state.D&&state.D.mes);
+  }
 }
 
 function renderUnidadesForm(D){
@@ -400,10 +456,11 @@ function init(){
   if($("btn-csv")) $("btn-csv").onclick=baixarCsv;
   if($("btn-print")) $("btn-print").onclick=imprimir;
   if($("btn-pesos")) $("btn-pesos").onclick=salvarPesos;
+  if($("btn-addcat")) $("btn-addcat").onclick=adicionarCategoria;
   carregar();
 }
 
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init); else init();
 
-if(typeof module!=="undefined"&&module.exports) module.exports={render, state};
+if(typeof module!=="undefined"&&module.exports) module.exports={render, state, adicionarCategoria, removerCategoria};
 })();

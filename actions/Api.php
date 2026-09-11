@@ -8,7 +8,10 @@ use CCsrfTokenHelper;
 use CWebUser;
 use InvalidArgumentException;
 use Modules\SlaExecutivo\Services\InputCompat;
+use Modules\SlaExecutivo\Services\Config;
+use Modules\SlaExecutivo\Services\Db;
 use Modules\SlaExecutivo\Services\Repository;
+use Modules\SlaExecutivo\Services\ZabbixSource;
 use RuntimeException;
 use Throwable;
 
@@ -17,6 +20,7 @@ require_once __DIR__.'/../services/Db.php';
 require_once __DIR__.'/../services/Config.php';
 require_once __DIR__.'/../services/Parser.php';
 require_once __DIR__.'/../services/Repository.php';
+require_once __DIR__.'/../services/ZabbixSource.php';
 
 /**
  * Ponte entre a tela e o banco.
@@ -29,7 +33,7 @@ final class Api extends CController {
 
 	use InputCompat;
 
-	private const PERMITIDOS = '#^(consolidado|semanal|pesos|unidades|config|categorias|mapa|importacoes(/\d+)?|demo|dados|export/(csv|json|semanal-csv)|health)$#';
+	private const PERMITIDOS = '#^(consolidado|semanal|pesos|unidades|config|categorias|mapa|importacoes(/\d+)?|demo|dados|export/(csv|json|semanal-csv)|health|diagnostico|testar-conexao|conexao-padrao|grupos-zabbix|fonte|coletar)$#';
 
 	protected function init(): void {
 		$this->initInputCompat();
@@ -114,6 +118,59 @@ final class Api extends CController {
 	private function despachar(string $caminho, string $metodo, array $corpo, ?int $ano, string $usuario): array {
 		if ($caminho === 'health') {
 			return ['json' => Repository::saude()];
+		}
+
+		if ($caminho === 'diagnostico') {
+			return ['json' => Db::diagnostico()];
+		}
+
+		if ($caminho === 'testar-conexao') {
+			return ['json' => Db::testar([
+				'host' => trim((string) ($corpo['db_host'] ?? '')), 'port' => trim((string) ($corpo['db_port'] ?? '')),
+				'dbname' => trim((string) ($corpo['db_name'] ?? '')), 'user' => trim((string) ($corpo['db_user'] ?? '')),
+				'password' => (string) ($corpo['db_password'] ?? '')
+			])];
+		}
+
+		if ($caminho === 'conexao-padrao') {
+			Config::salvar(['logo_url' => Config::logoUrl()]);
+			Db::reiniciar();
+
+			return ['json' => Repository::saude()];
+		}
+
+		if ($caminho === 'grupos-zabbix') {
+			return ['json' => ['grupos' => ZabbixSource::gruposDeHosts()]];
+		}
+
+		if ($caminho === 'fonte') {
+			if ($metodo === 'PUT') {
+				Config::salvarFonte($corpo);
+			}
+
+			return ['json' => ZabbixSource::fonte()];
+		}
+
+		if ($caminho === 'coletar') {
+			$tz = new \DateTimeZone(date_default_timezone_get());
+			$inicio = \DateTime::createFromFormat('Y-m-d', (string) ($corpo['inicio'] ?? ''), $tz);
+			$fim = \DateTime::createFromFormat('Y-m-d', (string) ($corpo['fim'] ?? ''), $tz);
+
+			if ($inicio === false || $fim === false) {
+				throw new InvalidArgumentException(_('Informe início e fim no formato AAAA-MM-DD.'));
+			}
+
+			$inicio->setTime(0, 0, 0);
+			$fim->setTime(0, 0, 0)->modify('+1 day');   // fim inclusivo → exclusivo
+
+			if ($fim->getTimestamp() - $inicio->getTimestamp() > 62 * 86400) {
+				throw new InvalidArgumentException(_('Colete no máximo dois meses por vez.'));
+			}
+
+			set_time_limit(300);
+
+			return ['json' => ZabbixSource::coletar((array) ($corpo['groupids'] ?? []), $inicio->getTimestamp(), $fim->getTimestamp(), $usuario,
+				isset($corpo['purge']) ? (string) $corpo['purge'] : null)];
 		}
 
 		if ($caminho === 'consolidado') {

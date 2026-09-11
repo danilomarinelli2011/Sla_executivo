@@ -90,6 +90,105 @@ final class Db {
 	 * Verdadeiro quando nada foi sobrescrito na tela: o módulo está usando a
 	 * mesma conexão do Zabbix, sem nenhuma configuração própria.
 	 */
+	/**
+	 * Diagnóstico completo, para a tela: de onde vem cada parâmetro, se a
+	 * extensão existe, se conecta, se consegue criar tabela, quais migrações
+	 * rodaram. É o que se olha quando "está dando erro" sem dizer qual.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function diagnostico(): array {
+		$modulo = Config::module();
+		$guardado = $modulo !== null ? $modulo->getConfig() : [];
+		$guardado = is_array($guardado) ? $guardado : [];
+		$origem = static function (string $chave_config, string $chave_ambiente) use ($guardado): string {
+			if (trim((string) ($guardado[$chave_config] ?? '')) !== '') {
+				return 'tela';
+			}
+
+			return trim((string) getenv($chave_ambiente)) !== '' ? 'ambiente ('.$chave_ambiente.')' : 'padrão';
+		};
+
+		$p = self::parametros();
+		$saida = [
+			'extensao_pdo_pgsql' => extension_loaded('pdo_pgsql'),
+			'parametros' => [
+				'host' => ['valor' => $p['host'], 'origem' => $origem('db_host', 'DB_SERVER_HOST')],
+				'port' => ['valor' => $p['port'], 'origem' => $origem('db_port', 'DB_SERVER_PORT')],
+				'dbname' => ['valor' => $p['dbname'], 'origem' => $origem('db_name', 'POSTGRES_DB')],
+				'user' => ['valor' => $p['user'], 'origem' => $origem('db_user', 'POSTGRES_USER')],
+				'password' => ['valor' => $p['password'] !== '' ? '••••••' : '(vazia)', 'origem' => $origem('db_password', 'POSTGRES_PASSWORD')]
+			],
+			'conecta' => false, 'versao' => '', 'cria_tabela' => false, 'migracoes' => [], 'medicoes' => 0, 'erro' => ''
+		];
+
+		if (!$saida['extensao_pdo_pgsql']) {
+			$saida['erro'] = _('A extensão PHP pdo_pgsql não está carregada neste frontend.');
+			return $saida;
+		}
+
+		try {
+			$pdo = self::conexao();
+			$saida['conecta'] = true;
+			$saida['versao'] = (string) $pdo->query('SHOW server_version')->fetchColumn();
+			$saida['migracoes'] = array_column($pdo->query('SELECT arquivo FROM sla_migracao ORDER BY 1')->fetchAll(), 'arquivo');
+			$saida['medicoes'] = (int) $pdo->query('SELECT count(*) FROM sla_medicao')->fetchColumn();
+
+			// Cria e apaga uma tabela temporária: prova a permissão sem deixar rastro.
+			$pdo->exec('CREATE TEMP TABLE sla_diag_tmp (x int)');
+			$pdo->exec('DROP TABLE sla_diag_tmp');
+			$saida['cria_tabela'] = true;
+		}
+		catch (\Throwable $e) {
+			$saida['erro'] = $e->getMessage();
+		}
+
+		return $saida;
+	}
+
+	/**
+	 * Testa parâmetros digitados, sem gravar nada e sem tocar na conexão em uso.
+	 *
+	 * @param array<string, string> $p  host, port, dbname, user, password
+	 *
+	 * @return array{ok: bool, mensagem: string}
+	 */
+	public static function testar(array $p): array {
+		if (!extension_loaded('pdo_pgsql')) {
+			return ['ok' => false, 'mensagem' => _('A extensão PHP pdo_pgsql não está carregada.')];
+		}
+
+		$dsn = sprintf('pgsql:host=%s;port=%s;dbname=%s', $p['host'], $p['port'] !== '' ? $p['port'] : '5432', $p['dbname']);
+
+		try {
+			$pdo = new PDO($dsn, $p['user'], $p['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
+			$versao = (string) $pdo->query('SHOW server_version')->fetchColumn();
+			$pdo->exec('CREATE TEMP TABLE sla_diag_tmp (x int)');
+			$pdo->exec('DROP TABLE sla_diag_tmp');
+			$tem = $pdo->query("SELECT to_regclass('public.sla_config')")->fetchColumn();
+
+			return ['ok' => true, 'mensagem' => sprintf(_('Conectou ao PostgreSQL %1$s, pode criar tabelas. %2$s'), $versao,
+				$tem !== null ? _('As tabelas sla_* já existem neste banco.') : _('As tabelas sla_* ainda não existem; serão criadas na primeira abertura.'))];
+		}
+		catch (\Throwable $e) {
+			$mensagem = $e->getMessage();
+			$dica = '';
+
+			if (stripos($mensagem, 'could not connect') !== false || stripos($mensagem, 'Connection refused') !== false
+					|| stripos($mensagem, 'timeout') !== false || stripos($mensagem, 'No such file') !== false) {
+				$dica = ' '._('Lembre que o endereço é resolvido de dentro do container do frontend: "localhost" aqui é o próprio container, não a sua máquina. Use o nome do serviço no compose (ex.: postgres) ou o IP do host.');
+			}
+			elseif (stripos($mensagem, 'password authentication failed') !== false || stripos($mensagem, 'authentication') !== false) {
+				$dica = ' '._('Usuário ou senha recusados pelo Postgres. Confira também o pg_hba.conf para conexões vindas da rede do Docker.');
+			}
+			elseif (stripos($mensagem, 'does not exist') !== false) {
+				$dica = ' '._('O banco informado não existe neste servidor.');
+			}
+
+			return ['ok' => false, 'mensagem' => $mensagem.$dica];
+		}
+	}
+
 	public static function usandoAmbiente(): bool {
 		$modulo = Config::module();
 		$guardado = $modulo !== null ? $modulo->getConfig() : [];

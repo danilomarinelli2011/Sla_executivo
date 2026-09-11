@@ -1,5 +1,176 @@
 # Histórico de versões
 
+## 4.3.0 — cadastro de categorias na página semanal, com soma automática
+
+O card **Pesos de negócio por categoria** da página semanal mostrava só três
+campos fixos (OP/ES/AG). O backend já suportava cadastrar, editar e remover
+categorias por completo (`Repository::salvarCategorias()`,
+`Repository::salvarPesos()`) — o recurso já existia na página mensal, só não
+tinha chegado à semanal, que é onde o peso de negócio realmente importa (é
+ele que compõe a PONDERADA).
+
+### Cadastro direto no card de pesos
+
+- Novo campo **Nova categoria** (nome + sigla), no mesmo padrão já usado na
+  página mensal. Ao adicionar, a categoria entra com peso 0 — precisa ser
+  ajustado e salvo em "Salvar pesos" — e o card recarrega mostrando a linha
+  nova.
+- Cada categoria (exceto "Não classificado", que é estrutural) ganhou um
+  botão de remover. Remover pede confirmação explicando a consequência: o
+  banco já faz `ON DELETE CASCADE` em `sla_grupo_categoria` — grupos
+  classificados manualmente naquela categoria voltam a cair pela expressão
+  de classificação, ou em "Não classificado". A confirmação existe para essa
+  consequência nunca ser surpresa.
+- Limite de 12 categorias (já existente no backend) respeitado no cadastro
+  pela tela: o botão avisa ao atingir o teto em vez de deixar a chamada
+  falhar sem explicação.
+
+### Soma ajustada automaticamente
+
+A soma dos pesos já recalculava ao editar um campo existente. Agora também
+reflete adicionar ou remover uma categoria, porque as duas ações recarregam o
+card inteiro a partir do servidor — a soma nunca fica desatualizada em
+relação às categorias realmente cadastradas.
+
+### Verificado, não só implementado
+
+- `services/Repository.php` já tinha o CRUD completo; nenhuma mudança de
+  backend foi necessária. O que faltava era isso: confirmar isso lendo o
+  código, em vez de reimplementar algo que já existia.
+- `tests/repository.php` ganhou 10 verificações contra Postgres real:
+  adicionar categoria (peso começa em 0), editar categorias existentes sem
+  resetar o peso já salvo (o UPSERT de `salvarCategorias()` propositalmente
+  não toca `peso_negocio`), remover categoria e confirmar que a
+  classificação manual de grupo apontando para ela é arrastada junto
+  (cascade), e que a lista nunca pode ficar vazia.
+- `tests/render.js` ganhou 10 verificações do card de pesos na página
+  semanal: um campo por categoria (nunca para "Não classificado"), a soma
+  inicial correta, o botão de remover presente só com permissão de escrita,
+  e — o ponto central do pedido — a soma se ajustando sozinha para 75,00 ao
+  remover uma categoria de peso 25, sem qualquer recarregamento manual.
+- As duas suítes novas foram validadas contra regressão de propósito:
+  removendo o `DELETE` que descarta categorias fora da lista enviada (o que
+  desfaria a remoção e o cascade), 4 verificações falham como esperado;
+  removendo o botão de remover do HTML gerado, 1 verificação falha como
+  esperado.
+
+## 4.2.1 — encontra o RelatorioDisponibilidade e herda o expurgo dele
+
+Na 4.2.0 a card dizia "Módulo RelatorioDisponibilidade não encontrado" mesmo
+com ele instalado (`djs-relatorio-disponibilidade`, namespace
+`RelatorioDisponibilidade`, 1.15.0). Causa mais provável: a busca só olhava
+os módulos **habilitados** no frontend (`getModules()`); um módulo presente
+no disco mas desabilitado, ou ainda não escaneado, não aparece ali. E a tela
+não dizia o que tinha visto.
+
+### Detecção
+
+- Dois passos: registro do frontend (namespace `RelatorioDisponibilidade` ou
+  id contendo `relatorio-disponibilidade`) e, se não achar, o disco —
+  `modules/*/manifest.json` com esse namespace. O `ReportService.php` é
+  localizado dentro da pasta encontrada.
+- A card mostra, num "Como a referência foi procurada", cada módulo visto,
+  a pasta e o resultado. "Não encontrado" nunca mais é opaco.
+- A configuração vem de `ModuleConfig::get()` do próprio módulo — quem sabe
+  as chaves é ele: `trigger_patterns` (literal ou regex `/…/`), `slo`,
+  `calendar`, `purge_maintenance`. O matcher de trigger passa a ser o
+  `isAvailabilityTrigger()` dele quando carregado, para regex e âncoras
+  funcionarem igual.
+
+### Expurgo
+
+- O modo de expurgo do módulo de referência (`off`, `discount`, `exclude`)
+  é o padrão da coleta, e pode ser trocado por coleta no campo "Expurgo nesta
+  coleta". O valor escolhido chega ao `generate()` dele em
+  `maintenance_mode`, então o expurgo manual feito lá (as manutenções
+  "Expurgo SLA – host – data") é respeitado aqui.
+- O motor interno ganhou o modo `exclude`: host com manutenção no período
+  sai do cálculo inteiro, marcado como "Expurgado" com o motivo.
+- Hash da coleta passa a ser grupo + período, sem as regras: recoletar a
+  mesma janela com outro expurgo **substitui** a anterior. Com as regras no
+  hash, a mesma semana apareceria duas vezes no quadro.
+
+### Testes
+
+- `tests/zabbix_source.php` agora tem 36 verificações, com um módulo de
+  referência **falso no disco** (manifest + ModuleConfig + ReportService):
+  detecção sem estar habilitado, padrões em regex preservados, SLO e expurgo
+  herdados, `generate()` chamado com o expurgo escolhido, mapeamento de
+  calculável/sem trigger/expurgado, modo `exclude` no motor interno, e a
+  substituição ao recoletar com outra regra.
+
+## 4.2.0 — coleta direta do Zabbix e diagnóstico da conexão
+
+### Coleta direta do Zabbix (sem CSV)
+
+Nova card **Coleta direta do Zabbix** na página mensal (Admin). Você marca os
+grupos de hosts, escolhe o mês — uma coleta por semana-calendário, o mês
+inteiro ou datas específicas — e clica em "Coletar agora". Os hosts são lidos
+da API do Zabbix, o SLA é calculado e gravado em `sla_medicao` pelo mesmo
+caminho do CSV. As visões mensal e semanal enxergam o resultado na hora.
+
+Dois motores, nesta ordem (`services/ZabbixSource.php`):
+
+1. **Referência.** Se o módulo RelatorioDisponibilidade estiver instalado no
+   mesmo frontend, o `ReportService` dele é chamado com a configuração dele —
+   padrões de trigger, meta, cobertura (24x7 ou expediente), modo de expurgo.
+   É o mesmo número do relatório oficial porque é o mesmo código. A card
+   mostra "Motor de referência: RelatorioDisponibilidade x.y.z" e as regras
+   herdadas.
+2. **Interno.** Sem o módulo de referência, as mesmas regras são reproduzidas
+   com a API: trigger de disponibilidade identificada por padrão de nome
+   (sem acento, sem diferenciar maiúsculas); eventos de problema com
+   recuperação, incidente aberto contando até o fim do período; intervalos
+   de várias triggers do mesmo host fundidos (não somados); manutenções de
+   janela única descontadas do tempo parado e da janela; host sem trigger
+   vira "Sem trigger de disponibilidade", nunca 100 %. Limitações declaradas
+   na tela: cobertura só 24x7 e manutenções recorrentes não descontadas —
+   para isso, instale o módulo de referência. Padrões e modo de expurgo do
+   motor interno são editáveis na card.
+
+Regras de gravação:
+
+- A janela é recortada em "agora": semana em curso entra parcial e é
+  substituída inteira na próxima coleta.
+- Hash determinístico por grupo + período + regras: coletar a mesma janela
+  de novo **substitui** a anterior (`Repository::gravarColeta`), então
+  "atualizar a semana" é só coletar de novo. Não há como dobrar o mês.
+- Cada linha registra na observação qual motor calculou (`motor:referencia`
+  ou `motor:interno`), e, se o de referência falhou e o interno assumiu, o
+  motivo.
+- Até 20 grupos por chamada e dois meses por vez; a página faz uma chamada
+  por semana, com log ao vivo, para não estourar o tempo do PHP.
+
+### Diagnóstico da conexão com o banco
+
+A card "Conexão com o banco" ganhou o que faltava para depurar "está dando
+erro":
+
+- Tabela com o **valor efetivo e a origem** de cada parâmetro (tela,
+  variável de ambiente ou padrão), e as checagens: extensão `pdo_pgsql`,
+  conecta, versão do PostgreSQL, consegue criar tabela, migrações aplicadas,
+  medições.
+- **Testar sem salvar**: testa o que está digitado nos campos sem gravar nem
+  tocar na conexão em uso, e devolve a mensagem real do Postgres com uma
+  dica quando o erro é conhecido — inclusive a mais comum: `localhost`
+  dentro do container do frontend é o próprio container, não a sua máquina;
+  use o nome do serviço no compose ou o IP do host.
+- **Voltar para a conexão do Zabbix**: apaga a conexão configurada na tela e
+  volta ao ambiente, sem precisar limpar campo por campo.
+- Salvar a conexão preserva as regras da coleta (padrões, expurgo), que
+  vivem no mesmo registro do módulo.
+
+### Testes
+
+- Novo `tests/zabbix_source.php` (22 verificações): fusão de intervalos
+  sobrepostos, incidente iniciado antes do período, incidente aberto no
+  fim, desconto de manutenção dentro e fora do incidente, padrão sem acento,
+  lista de padrões normalizada; e uma coleta com a API do Zabbix simulada —
+  três hosts (dois calculáveis, um sem trigger), duas triggers sobrepostas
+  fundidas em 2 h, incidente dentro de manutenção descontado com janela
+  reduzida, período/semana deduzidos, motor registrado, coleta repetida
+  substituindo em vez de duplicar, quadro semanal enxergando o resultado.
+
 ## 4.1.2 — PDF em janela própria (antes saía em branco)
 
 A 4.0.3 tentou vencer o layout do Zabbix por CSS na impressão. Funcionou para

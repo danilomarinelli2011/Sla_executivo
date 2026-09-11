@@ -624,6 +624,132 @@ async function adicionarCategoria(){
 }
 
 /* ══════════════════════════════════════════════════════════════
+   5b. Conexão: diagnóstico e teste sem salvar
+   ══════════════════════════════════════════════════════════════ */
+async function diagnosticar(){
+  const caixa=$("diagnostico"); if(!caixa) return;
+  const r=await chamar("diagnostico"); if(!r.ok||!r.json) return;
+  const d=r.json, ok=v=>v?'<span class="sx-pill sx-ok">ok</span>':'<span class="sx-pill sx-bad">falha</span>';
+  caixa.innerHTML=`<table class="sx-plain"><thead><tr><th>Parâmetro efetivo</th><th>Valor</th><th>Origem</th></tr></thead><tbody>
+    ${Object.entries(d.parametros).map(([k,v])=>`<tr><td>${k}</td><td><code>${esc(v.valor)}</code></td><td>${esc(v.origem)}</td></tr>`).join("")}
+    </tbody></table>
+    <div style="margin-top:8px;font-size:12.5px;display:flex;gap:14px;flex-wrap:wrap">
+      <span>Extensão pdo_pgsql ${ok(d.extensao_pdo_pgsql)}</span>
+      <span>Conecta ${ok(d.conecta)}${d.versao?" · PostgreSQL "+esc(d.versao):""}</span>
+      <span>Cria tabela ${ok(d.cria_tabela)}</span>
+      <span>Migrações: ${d.migracoes.length?esc(d.migracoes.join(", ")):"—"}</span>
+      <span>Medições: ${d.medicoes}</span>
+    </div>${d.erro?`<div class="sx-alert sx-alert-warning" style="margin-top:8px"><strong>Erro</strong><span>${esc(d.erro)}</span></div>`:""}`;
+}
+
+async function testarConexao(){
+  const v=id=>document.getElementById(id)?document.getElementById(id).value:"";
+  const corpo={db_host:v("sx-db-host"),db_port:v("sx-db-port"),db_name:v("sx-db-name"),db_user:v("sx-db-user"),db_password:v("sx-db-password")};
+  if(!corpo.db_host){ toast("Preencha o host para testar."); return; }
+  const r=await chamar("testar-conexao",{metodo:"POST",payload:corpo});
+  if(r.json) toast((r.json.ok?"✔ ":"✖ ")+r.json.mensagem);
+}
+
+async function conexaoPadrao(){
+  if(!confirm("Apagar a conexão configurada aqui e voltar a usar a do Zabbix?")) return;
+  const r=await chamar("conexao-padrao",{metodo:"POST"});
+  if(r.ok){ toast("Voltou para a conexão do Zabbix."); location.reload(); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   5c. Coleta direta do Zabbix
+   ══════════════════════════════════════════════════════════════ */
+const coleta={grupos:[], fonte:null};
+
+async function prepararColeta(){
+  if(!$("sec-coleta")) return;
+  const [f,g]=await Promise.all([chamar("fonte"), chamar("grupos-zabbix")]);
+  if(f.ok&&f.json){ coleta.fonte=f.json; renderFonte(f.json); }
+  if(g.ok&&g.json){ coleta.grupos=g.json.grupos||[]; renderGrupos(""); }
+  /* meses: os últimos 12 */
+  const sel=$("col-mes"), hoje=new Date(), ops=[];
+  for(let i=0;i<12;i++){ const d=new Date(hoje.getFullYear(),hoje.getMonth()-i,1); ops.push(`<option value="${d.getFullYear()}-${d.getMonth()+1}">${MES[d.getMonth()]}/${d.getFullYear()}</option>`); }
+  sel.innerHTML=ops.join("");
+  $("col-filtro").oninput=()=>renderGrupos($("col-filtro").value);
+  $("col-modo").onchange=modoColeta; modoColeta();
+  $("btn-coletar").onclick=coletarAgora;
+}
+
+function renderFonte(f){
+  const proprio=f.origem==="proprio";
+  const opcoes=Object.entries(f.purge_opcoes||{}).map(([v,l])=>`<option value="${v}" ${v===f.purge?"selected":""}>${esc(l)}</option>`).join("");
+  $("fonte").innerHTML=`<div class="sx-alert ${proprio?"sx-alert-warning":""}" style="${proprio?"":"background:#E2EAF6;border:1px solid #B9C9E8;color:#132A54"}">
+    <strong>${proprio?"Motor interno":"Motor de referência: RelatorioDisponibilidade "+esc(f.versao||"")+" — as regras dele valem aqui"}</strong>
+    <span>Meta/SLO ${fmt(f.slo)} · cobertura ${esc(f.calendar&&f.calendar.mode||"24x7")} · expurgo padrão: ${esc((f.purge_opcoes||{})[f.purge]||f.purge)}</span>
+    <span>Padrões de trigger de disponibilidade: ${f.patterns.map(p=>"<code>"+esc(p)+"</code>").join(" ")}</span>
+    ${f.aviso?`<span>${esc(f.aviso)}</span>`:""}
+    <div class="sx-params" style="margin-top:6px">
+      <div class="sx-field"><label for="sx-col-purge">Expurgo nesta coleta</label><select id="sx-col-purge">${opcoes}</select></div>
+      ${proprio?`<div class="sx-field" style="flex:1"><label for="sx-fonte-patterns">Padrões (literal, /regex/ ou regex:…, separados por vírgula)</label>
+        <input id="sx-fonte-patterns" value="${esc(f.patterns.join(", "))}" style="min-width:380px"></div>
+        <button type="button" class="sx-btn" id="sx-btn-fonte">Salvar regras</button>`:""}
+    </div>
+    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px">Como a referência foi procurada</summary>
+      <div style="font-family:Consolas,Menlo,monospace;font-size:11px;line-height:1.5;margin-top:4px">${(f.diagnostico||[]).map(esc).join("<br>")}</div></details>
+  </div>`;
+  if($("btn-fonte")) $("btn-fonte").onclick=async()=>{
+    const r=await chamar("fonte",{metodo:"PUT",payload:{zbx_patterns:$("fonte-patterns").value, zbx_purge:$("col-purge").value}});
+    if(r.ok&&r.json){ toast("Regras salvas."); renderFonte(r.json); }
+  };
+}
+
+function renderGrupos(filtro){
+  const f=filtro.trim().toLowerCase();
+  const marcados=new Set([...document.querySelectorAll("[data-gid]:checked")].map(i=>i.dataset.gid));
+  $("col-grupos").innerHTML=coleta.grupos.filter(g=>!f||g.name.toLowerCase().includes(f)).slice(0,300).map(g=>`
+    <label class="sx-chip" style="cursor:pointer"><input type="checkbox" data-gid="${g.groupid}" ${marcados.has(String(g.groupid))?"checked":""}> ${esc(g.name)} <span style="color:var(--sx-muted)">${g.hosts}</span></label>`).join("")
+    || '<span class="sx-note">Nenhum grupo com hosts monitorados casa com o filtro.</span>';
+}
+
+function modoColeta(){
+  const m=$("col-modo").value;
+  $("col-mes").parentElement.style.display = m==="custom"?"none":"";
+  $("col-ini").parentElement.style.display = $("col-fim").parentElement.style.display = m==="custom"?"":"none";
+}
+
+/* Semanas-calendário (domingo a sábado) do mês, recortadas ao mês e a hoje —
+   a mesma convenção do quadro semanal. */
+function semanasDoMes(ano,mes){
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const ultimo=new Date(ano,mes,0); let cursor=new Date(ano,mes-1,1); const out=[];
+  while(cursor<=ultimo && cursor<=hoje){
+    const sab=new Date(cursor); sab.setDate(cursor.getDate()+(6-cursor.getDay()));
+    let fim=sab<ultimo?sab:new Date(ultimo); if(fim>hoje) fim=new Date(hoje);
+    out.push([iso(cursor), iso(fim)]);
+    cursor=new Date(fim); cursor.setDate(fim.getDate()+1);
+  }
+  return out;
+}
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+async function coletarAgora(){
+  const gids=[...document.querySelectorAll("[data-gid]:checked")].map(i=>i.dataset.gid);
+  if(!gids.length) return toast("Marque ao menos um grupo de hosts.");
+  const modo=$("col-modo").value; let janelas=[];
+  if(modo==="custom"){ if(!$("col-ini").value||!$("col-fim").value) return toast("Informe início e fim."); janelas=[[$("col-ini").value,$("col-fim").value]]; }
+  else { const [a,m]=$("col-mes").value.split("-").map(Number);
+    if(modo==="mes"){ const hoje=new Date(); hoje.setHours(0,0,0,0); let fim=new Date(a,m,0); if(fim>hoje) fim=hoje; janelas=[[iso(new Date(a,m-1,1)), iso(fim)]]; }
+    else janelas=semanasDoMes(a,m); }
+  if(!janelas.length) return toast("Esse mês ainda não começou.");
+
+  const log=$("col-log"); log.innerHTML=""; const b=$("btn-coletar"); b.disabled=true;
+  const linha=t=>{ log.insertAdjacentHTML("beforeend",`<div>${t}</div>`); log.scrollTop=log.scrollHeight; };
+  linha(`Coletando ${gids.length} grupo(s) em ${janelas.length} janela(s)…`);
+  for(const [ini,fim] of janelas){
+    linha(`▸ ${ini} a ${fim}…`);
+    const r=await chamar("coletar",{metodo:"POST",payload:{groupids:gids,inicio:ini,fim:fim,purge:$("col-purge")?$("col-purge").value:""}});
+    if(!r.ok||!r.json){ linha(`&nbsp;&nbsp;✖ ${esc(r.erro||"falha")}`); continue; }
+    for(const g of r.json.grupos) linha(`&nbsp;&nbsp;✔ ${esc(g.grupo)}: ${g.calculaveis}/${g.hosts} hosts calculáveis${g.sem_trigger?", "+g.sem_trigger+" sem trigger":""}${g.expurgados?", "+g.expurgados+" expurgado(s)":""} · motor ${g.motor}`);
+  }
+  b.disabled=false; linha("Concluído."); toast("Coleta concluída."); carregar();
+}
+
+/* ══════════════════════════════════════════════════════════════
    6. Interface
    ══════════════════════════════════════════════════════════════ */
 function graficos(){
@@ -728,6 +854,10 @@ function init(){
 
   if($("btn-save"))  $("btn-save").onclick  = salvarParametros;
   if($("btn-addcat")) $("btn-addcat").onclick = adicionarCategoria;
+  if($("btn-testar")) $("btn-testar").onclick = testarConexao;
+  if($("btn-conexao-padrao")) $("btn-conexao-padrao").onclick = conexaoPadrao;
+  diagnosticar();
+  prepararColeta();
   if($("p-ano")) $("p-ano").onchange = () => carregar($("p-ano").value);
 
   carregar();

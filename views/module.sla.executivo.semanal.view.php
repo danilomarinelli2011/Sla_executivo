@@ -58,6 +58,16 @@ $pesos = [
 
 if ($is_admin) {
 	$pesos[] = sx_tag('div', sx_tag('button', _('Salvar pesos'), ['type' => 'button', 'id' => 'sx-btn-pesos', 'class' => 'sx-btn sx-primary-button']), ['style' => 'margin-top:10px']);
+
+	// Cadastro de categoria direto por aqui: adicionar já entra no quadro de
+	// pesos, sem precisar ir até a visão mensal. Remover é por linha, no
+	// próprio card (desenhado por sla-semanal.js em renderPesos()).
+	$pesos[] = sx_tag('div', [
+		sx_field('sx-newcat', _('Nova categoria'), sx_input('sx-newcat', '', ['placeholder' => _('Ex.: Data Center')])),
+		sx_field('sx-newsig', _('Sigla'), sx_input('sx-newsig', '', ['placeholder' => 'DC', 'maxlength' => '4'])),
+		sx_tag('button', _('Adicionar categoria'), ['type' => 'button', 'id' => 'sx-btn-addcat', 'class' => 'sx-btn'])
+	], ['class' => 'sx-params', 'style' => 'margin-top:12px']);
+	$pesos[] = sx_tag('p', _('Remover uma categoria some com ela do quadro de pesos e desfaz a classificação manual de grupos que apontavam para ela — os grupos afetados caem de volta para a categoria pela expressão, ou "Não classificado".'), ['class' => 'sx-note']);
 }
 
 // ── Unidades por grupo (Admin) ──────────────────────────────────────────────

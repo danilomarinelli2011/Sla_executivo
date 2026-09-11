@@ -72,3 +72,13 @@ jobs:
           POSTGRES_PASSWORD: sla_ci
         run: |
           cd modules/SlaExecutivo && php tests/repository.php
+
+      - name: Testes da coleta direta (API do Zabbix simulada)
+        env:
+          DB_SERVER_HOST: localhost
+          DB_SERVER_PORT: '5432'
+          POSTGRES_DB: sla_ci
+          POSTGRES_USER: sla_ci
+          POSTGRES_PASSWORD: sla_ci
+        run: |
+          cd modules/SlaExecutivo && php tests/zabbix_source.php

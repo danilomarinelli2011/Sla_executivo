@@ -50,6 +50,7 @@ SlaExecutivo/
 │   ├── Db.php                           conexão e criação automática do schema
 │   ├── Parser.php                       leitura dos CSVs (relatório e formato largo)
 │   ├── Repository.php                   parâmetros, importação, consolidação, exportação
+│   ├── ZabbixSource.php                 coleta direta (motor de referência ou interno)
 │   ├── Config.php                       conexão opcional e logotipo
 │   └── InputCompat.php                  compatibilidade 6.4 → 8.0
 ├── views/
@@ -66,6 +67,7 @@ SlaExecutivo/
 ├── tests/
 │   ├── config.php                       php tests/config.php
 │   ├── repository.php                   php tests/repository.php (precisa de Postgres)
+│   ├── zabbix_source.php                php tests/zabbix_source.php (API simulada + Postgres)
 │   └── render.js                        node tests/render.js
 ├── tools/gitea-workflow.yaml
 ├── CHANGELOG.md
@@ -106,6 +108,33 @@ admin.
 precisar de nenhum CSV — útil para validar a instalação. Depois é só remover
 essa importação pela lista.
 
+## Coleta direta do Zabbix (sem CSV)
+
+Na página mensal, a card **Coleta direta do Zabbix** (Admin) lê os hosts dos
+grupos escolhidos pela API e calcula o SLA sem nenhum arquivo. Escolha o mês
+e o modo — uma coleta por semana-calendário (alimenta o quadro semanal e o
+mensal), o mês inteiro, ou datas específicas — e clique em "Coletar agora".
+
+Se o módulo **RelatorioDisponibilidade** estiver instalado, o cálculo é feito
+pelo `ReportService` dele, com a configuração dele (padrões de trigger, meta,
+cobertura, expurgo): mesmo número do relatório oficial. Sem ele, o motor
+interno reproduz as regras — padrão de nome da trigger, eventos com
+recuperação, intervalos fundidos, manutenções de janela única descontadas,
+host sem trigger como N/D — com cobertura 24x7. A card diz qual motor está em
+uso e quais regras valem.
+
+Coletar a mesma janela de novo substitui a anterior. É assim que se atualiza
+a semana em curso.
+
+## Diagnóstico da conexão
+
+A card "Conexão com o banco" mostra o valor efetivo e a origem de cada
+parâmetro, e testa extensão, conexão, permissão de criar tabela e migrações.
+"Testar sem salvar" experimenta o que está digitado sem gravar; "Voltar para
+a conexão do Zabbix" descarta a conexão configurada na tela. Erro mais comum
+ao apontar outro banco: `localhost` é resolvido de dentro do container do
+frontend — use o nome do serviço no compose ou o IP do host.
+
 ## Acompanhamento semanal por unidade
 
 **Tools › SLA Executivo › SLA Executivo (Semanal)** reproduz o quadro da diretoria: um bloco
@@ -132,6 +161,17 @@ Pesos padrão OP 40 · ES 35 · AG 25 (editáveis). A coluna PONDERADA de cada
 categoria mostra a contribuição (ACUM × peso); a da linha Geral, a soma.
 Unidade sem alguma categoria tem a soma normalizada pelos pesos presentes, e a
 leitura executiva avisa.
+
+Categorias não precisam se limitar às três padrão: no próprio card **Pesos de
+negócio por categoria**, Admin pode cadastrar uma categoria nova (nome e
+sigla) ou remover uma existente, direto pela página semanal — sem precisar ir
+até a visão mensal. A soma exibida se ajusta sozinha a cada categoria
+adicionada ou removida, refletindo sempre o conjunto atual. Categoria nova
+entra com peso 0; ajuste e clique em "Salvar pesos" para valer na PONDERADA.
+Remover uma categoria pede confirmação: o banco arrasta junto (cascade) a
+classificação manual de qualquer grupo que apontava para ela, que volta a
+cair pela expressão de classificação ou em "Não classificado". Limite de 12
+categorias no total.
 
 Estrutura: `actions/SemanalView.php`, `views/module.sla.executivo.semanal.view.php`,
 `assets/js/sla-semanal.js`, migração `sql/002_semanal.sql`.

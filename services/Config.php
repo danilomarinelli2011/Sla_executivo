@@ -115,7 +115,41 @@ final class Config {
 			$limpo['db_password'] = (string) ($atual['db_password'] ?? '');
 		}
 
-		$modulo->setConfig($limpo);
+		// As chaves da fonte de coleta (padrões, expurgo) vivem no mesmo registro
+		// e não podem sumir quando só a conexão é salva.
+		$modulo->setConfig(array_merge(self::chavesDaFonte($atual), $limpo));
+	}
+
+	/**
+	 * Padrões de trigger e modo de expurgo do motor interno de coleta.
+	 * Só valem quando o módulo RelatorioDisponibilidade não está instalado.
+	 *
+	 * @param array<string, mixed> $bruto
+	 */
+	public static function salvarFonte(array $bruto): void {
+		$modulo = self::module();
+
+		if ($modulo === null) {
+			throw new InvalidArgumentException(_('O módulo não está registrado no frontend.'));
+		}
+
+		$atual = $modulo->getConfig();
+		$atual = is_array($atual) ? $atual : [];
+		$purge = (string) ($bruto['zbx_purge'] ?? 'discount');
+
+		$modulo->setConfig(array_merge($atual, [
+			'zbx_patterns' => implode("\n", ZabbixSource::listaDePadroes($bruto['zbx_patterns'] ?? '')),
+			'zbx_purge' => in_array($purge, ['off', 'discount'], true) ? $purge : 'discount'
+		]));
+	}
+
+	/**
+	 * @param array<string, mixed> $config
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function chavesDaFonte(array $config): array {
+		return array_intersect_key($config, ['zbx_patterns' => 1, 'zbx_purge' => 1]);
 	}
 
 	public static function module(): ?CModule {

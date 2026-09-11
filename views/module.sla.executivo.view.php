@@ -161,7 +161,9 @@ if ($is_admin) {
 		])),
 		sx_field('sx-logo-url', _('Logotipo do relatório'),
 			sx_input('sx-logo-url', (string) ($atual['logo_url'] ?? ''), ['name' => 'logo_url'])),
-		sx_tag('button', _('Salvar'), ['type' => 'submit', 'class' => 'sx-btn sx-primary-button'])
+		sx_tag('button', _('Salvar'), ['type' => 'submit', 'class' => 'sx-btn sx-primary-button']),
+		sx_tag('button', _('Testar sem salvar'), ['type' => 'button', 'id' => 'sx-btn-testar', 'class' => 'sx-btn']),
+		sx_tag('button', _('Voltar para a conexão do Zabbix'), ['type' => 'button', 'id' => 'sx-btn-conexao-padrao', 'class' => 'sx-btn'])
 	];
 
 	$formulario = sx_tag('form', [
@@ -186,8 +188,29 @@ if ($is_admin) {
 
 	$conexao = sx_card(_('Conexão com o banco'), [
 		$formulario,
-		sx_tag('p', $nota, ['class' => 'sx-note'])
+		sx_tag('p', $nota, ['class' => 'sx-note']),
+		sx_tag('div', '', ['id' => 'sx-diagnostico', 'style' => 'margin-top:10px'])
 	], $estado, ['class' => 'sx-card sx-noprint']);
+
+	// ── Coleta direta do Zabbix (Admin) ─────────────────────────────────────
+	$coleta = sx_card(_('Coleta direta do Zabbix'), [
+		sx_tag('div', '', ['id' => 'sx-fonte']),
+		sx_tag('div', [
+			sx_field('sx-col-filtro', _('Grupos de hosts'), sx_input('sx-col-filtro', '', ['placeholder' => _('filtrar…'), 'style' => 'min-width:220px'])),
+			sx_field('sx-col-modo', _('Período'), sx_select('sx-col-modo', [
+				'semanas' => _('Semanas do mês (uma coleta por semana)'),
+				'mes' => _('Mês inteiro (uma coleta)'),
+				'custom' => _('Datas específicas')
+			], 'semanas')),
+			sx_field('sx-col-mes', _('Mês'), sx_select('sx-col-mes', [], '')),
+			sx_field('sx-col-ini', _('Início'), sx_input('sx-col-ini', '', ['type' => 'date'])),
+			sx_field('sx-col-fim', _('Fim'), sx_input('sx-col-fim', '', ['type' => 'date'])),
+			sx_tag('button', _('Coletar agora'), ['type' => 'button', 'id' => 'sx-btn-coletar', 'class' => 'sx-btn sx-primary-button'])
+		], ['class' => 'sx-params', 'style' => 'margin-top:10px']),
+		sx_tag('div', '', ['id' => 'sx-col-grupos', 'class' => 'sx-grupos']),
+		sx_tag('div', '', ['id' => 'sx-col-log', 'class' => 'sx-log']),
+		sx_tag('p', _('Sem CSV: os hosts dos grupos escolhidos são lidos da API do Zabbix com as mesmas regras do Relatório de Disponibilidade e gravados no banco. Coletar a mesma janela de novo substitui a anterior. As visões mensal e semanal enxergam o resultado na hora.'), ['class' => 'sx-note'])
+	], _('sem upload de arquivo'), ['class' => 'sx-card sx-noprint', 'id' => 'sx-sec-coleta']);
 }
 
 // ── Relatório ───────────────────────────────────────────────────────────────
@@ -250,6 +273,7 @@ $conteudo = [
 ];
 
 if ($conexao !== null) {
+	$conteudo[] = $coleta;
 	$conteudo[] = $conexao;
 }
 

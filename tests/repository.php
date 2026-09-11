@@ -168,6 +168,65 @@ sxRecusa(fn() => Repository::salvarCategorias([
 	['id' => 'AG', 'nome' => 'Agências', 'sigla' => 'ag', 'cor' => '#1E4380', 'padrao' => 'ag(enc']
 ], 'teste'), 'padrão de classificação que não compila é recusado');
 
+echo "\n── Cadastro de categoria (adicionar / remover) ────────────\n";
+
+// Categoria nova: a mesma lista atual acrescida de um item — é o que
+// adicionarCategoria() faz do lado do JS.
+$antes = Repository::categorias();
+sxCheck(count($antes) === 4, 'ponto de partida: as quatro categorias padrão');
+
+$comNova = array_merge($antes, [
+	['id' => 'TT', 'nome' => 'Categoria Teste', 'sigla' => 'TT', 'cor' => '#334455', 'padrao' => '']
+]);
+$depoisAdicionar = Repository::salvarCategorias($comNova, 'teste');
+sxCheck(count($depoisAdicionar) === 5, 'a categoria nova aparece na lista');
+
+$nova = null;
+foreach ($depoisAdicionar as $c) {
+	if ($c['id'] === 'TT') {
+		$nova = $c;
+	}
+}
+sxCheck($nova !== null && $nova['nome'] === 'Categoria Teste', 'nome e id da categoria nova são preservados');
+sxCheck($nova !== null && (float) $nova['peso'] === 0.0,
+	'categoria recém-criada começa com peso 0 — precisa ser ajustado à parte, em "pesos"');
+
+// Editar uma categoria EXISTENTE via salvarCategorias() não pode zerar o peso
+// dela: o UPSERT só toca nome/sigla/cor/padrao/ordem, peso_negocio fica de fora
+// da atualização de propósito.
+Repository::salvarPesos(['AG' => '77'], 'teste');
+$semNC = array_values(array_filter($depoisAdicionar, static fn($c) => $c['id'] !== 'NC'));
+$ncSozinho = array_values(array_filter($depoisAdicionar, static fn($c) => $c['id'] === 'NC'));
+Repository::salvarCategorias(array_merge($semNC, $ncSozinho), 'teste');
+$agApos = null;
+foreach (Repository::categorias() as $c) {
+	if ($c['id'] === 'AG') {
+		$agApos = $c;
+	}
+}
+sxCheck($agApos !== null && abs((float) $agApos['peso'] - 77.0) < 0.001,
+	'reordenar/reenviar categorias existentes não reseta o peso que já estava salvo');
+Repository::salvarPesos(['AG' => '25'], 'teste'); // devolve ao padrão para os testes seguintes
+
+// Remover: mapeia um grupo manualmente na categoria de teste, remove a
+// categoria, e confirma que o mapeamento manual foi arrastado junto
+// (ON DELETE CASCADE em sla_grupo_categoria.categoria_id).
+Repository::salvarMapa(['Grupo Teste Cascata' => 'TT'], 'teste');
+$mapeadoAntes = Db::consultarUm('SELECT categoria_id FROM sla_grupo_categoria WHERE grupo = ?', ['Grupo Teste Cascata']);
+sxCheck($mapeadoAntes !== null && $mapeadoAntes['categoria_id'] === 'TT',
+	'o grupo foi classificado manualmente na categoria de teste');
+
+$semTT = array_values(array_filter(Repository::categorias(), static fn($c) => $c['id'] !== 'TT'));
+$depoisRemover = Repository::salvarCategorias($semTT, 'teste');
+sxCheck(count($depoisRemover) === 4, 'a categoria removida some da lista');
+sxCheck(!in_array('TT', array_column($depoisRemover, 'id'), true), 'o id removido não reaparece');
+
+$mapeadoDepois = Db::consultarUm('SELECT categoria_id FROM sla_grupo_categoria WHERE grupo = ?', ['Grupo Teste Cascata']);
+sxCheck($mapeadoDepois === null,
+	'remover a categoria arrasta junto (cascade) a classificação manual dos grupos que apontavam para ela');
+
+sxRecusa(fn() => Repository::salvarCategorias([], 'teste'), 'lista vazia é recusada — nunca fica sem nenhuma categoria');
+
 echo "\n── Classificação manual ────────────────────────────────────\n";
 Repository::salvarMapa(['Agências SP' => 'OP'], 'teste');
 $dados = Repository::consolidado(2026);

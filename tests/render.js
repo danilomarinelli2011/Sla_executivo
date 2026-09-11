@@ -172,6 +172,77 @@ const t = painel.tendencia([99.1, 99.2, 99.3, 99.5]);
 verificar(t !== null && t.slope > 0, 'série crescente devolve inclinação positiva');
 verificar(painel.tendencia([99.1, null, null]) === null, 'menos de três pontos não vira tendência');
 
+// ════════════════════════════════════════════════════════════════════════
+// Semanal: cadastro de categoria (adicionar/remover) e soma automática
+// ════════════════════════════════════════════════════════════════════════
+console.log('\n── Semanal · quadro de pesos ─────────────────────────────');
+
+const painelSemanal = require(path.join(__dirname, '..', 'assets', 'js', 'sla-semanal.js'));
+
+// D mínimo: só o suficiente para render() alcançar renderPesos() antes do
+// atalho de "sem unidades" (que corta o resto da página, irrelevante aqui).
+function semanalMinimo(categorias) {
+	return {
+		ano: 2026, mes: 9,
+		config: {titulo: 'DISPONIBILIDADE', meta: 99, desafio: 99.7, decimais: 2},
+		categorias: categorias,
+		unidades: [],
+		meses_disponiveis: [{ano: 2026, mes: 9}]
+	};
+}
+
+const categoriasPadrao = [
+	{id: 'OP', nome: 'Operação', sigla: 'OP', cor: '#B02020', peso: 40},
+	{id: 'ES', nome: 'Escritórios', sigla: 'ES', cor: '#C7891B', peso: 35},
+	{id: 'AG', nome: 'Agências', sigla: 'AG', cor: '#1E4380', peso: 25},
+	{id: 'NC', nome: 'Não classificado', sigla: 'NC', cor: '#5B6879', peso: 0}
+];
+
+painelSemanal.state.ctx = {can_write: true, csrf_field: '_csrf_token', csrf_token: 'x'};
+painelSemanal.render(semanalMinimo(categoriasPadrao));
+
+const pesosForm = elemento('sx-pesos-form').innerHTML;
+verificar(pesosForm.indexOf('data-peso="OP"') !== -1 && pesosForm.indexOf('data-peso="AG"') !== -1,
+	'um campo de peso por categoria (exceto Não classificado)');
+verificar(pesosForm.indexOf('data-peso="NC"') === -1,
+	'Não classificado nunca ganha campo de peso');
+verificar(pesosForm.indexOf('id="sx-peso-soma"') !== -1 && pesosForm.match(/value="100,00"/) !== null,
+	'a soma inicial bate com 40 + 35 + 25');
+verificar(pesosForm.indexOf('data-cat-remove="OP"') !== -1,
+	'cada categoria (com permissão de escrita) ganha um botão de remover');
+
+console.log('\n── Semanal · cadastro sem permissão de escrita ───────────');
+painelSemanal.state.ctx = {can_write: false, csrf_field: '_csrf_token', csrf_token: 'x'};
+painelSemanal.render(semanalMinimo(categoriasPadrao));
+const pesosFormLeitura = elemento('sx-pesos-form').innerHTML;
+verificar(pesosFormLeitura.indexOf('data-cat-remove') === -1,
+	'sem permissão de escrita, o botão de remover não aparece');
+verificar(pesosFormLeitura.indexOf('disabled') !== -1,
+	'sem permissão de escrita, os campos de peso ficam desabilitados');
+
+console.log('\n── Semanal · soma reflete adicionar/remover categoria ────');
+painelSemanal.state.ctx = {can_write: true, csrf_field: '_csrf_token', csrf_token: 'x'};
+
+// Simula o efeito de adicionarCategoria(): categoria nova entra com peso 0 —
+// a soma das existentes não muda, mas o campo dela aparece.
+const comCategoriaNova = categoriasPadrao.concat([
+	{id: 'C1A2', nome: 'Data Center', sigla: 'DC', cor: '#7A3E9D', peso: 0}
+]);
+painelSemanal.render(semanalMinimo(comCategoriaNova));
+const pesosComNova = elemento('sx-pesos-form').innerHTML;
+verificar(pesosComNova.indexOf('data-peso="C1A2"') !== -1, 'a categoria recém-cadastrada ganha seu próprio campo de peso');
+verificar(pesosComNova.match(/value="100,00"/) !== null,
+	'peso 0 da categoria nova não altera a soma das demais (ainda 100,00)');
+
+// Simula o efeito de removerCategoria(): a soma cai exatamente pelo peso
+// da categoria removida — é o "ajuste automático" pedido.
+const semAG = categoriasPadrao.filter(c => c.id !== 'AG');
+painelSemanal.render(semanalMinimo(semAG));
+const pesosSemAG = elemento('sx-pesos-form').innerHTML;
+verificar(pesosSemAG.indexOf('data-peso="AG"') === -1, 'a categoria removida não tem mais campo de peso');
+verificar(pesosSemAG.match(/value="75,00"/) !== null,
+	'a soma se ajusta sozinha para 75,00 (100 − 25) ao remover Agências, sem recarregar a página à mão');
+
 console.log('');
 
 if (falhas > 0) {
